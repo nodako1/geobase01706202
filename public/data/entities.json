@@ -1,8 +1,51 @@
 {
-  "ChatGPT": {"displayName": "ChatGPT", "color": "#10A37F", "priority": 1},
-  "Google Gemini": {"displayName": "Gemini", "color": "#4E8DF7", "priority": 2},
-  "Perplexity": {"displayName": "Perplexity", "color": "#20B8CD", "priority": 3},
-  "Claude": {"displayName": "Claude", "color": "#D97757", "priority": 4},
-  "Microsoft Copilot": {"displayName": "Copilot", "color": "#9B6CFF", "priority": 5},
-  "DeepSeek": {"displayName": "DeepSeek", "color": "#3D6DEB", "priority": 6}
+  "Germany": {
+    "displayName": "ドイツ",
+    "mark": "独",
+    "color": "#D65757",
+    "priority": 1
+  },
+  "Japan": {
+    "displayName": "日本",
+    "mark": "日",
+    "color": "#E0455F",
+    "priority": 2
+  },
+  "Italy": {
+    "displayName": "イタリア",
+    "mark": "伊",
+    "color": "#D9903D",
+    "priority": 3
+  },
+  "Soviet Union": {
+    "displayName": "ソ連",
+    "mark": "ソ",
+    "color": "#A63D5E",
+    "priority": 4
+  },
+  "United Kingdom": {
+    "displayName": "イギリス",
+    "mark": "英",
+    "color": "#3D7BD9",
+    "priority": 5
+  },
+  "United States": {
+    "displayName": "アメリカ",
+    "mark": "米",
+    "color": "#4DB5E8",
+    "priority": 6
+  },
+  "France": {
+    "displayName": "フランス",
+    "mark": "仏",
+    "color": "#4FB7A5",
+    "priority": 7
+  },
+  "Other": {
+    "displayName": "中立・その他",
+    "mark": "他",
+    "color": "#354252",
+    "priority": 99,
+    "excludeFromRanking": true
+  }
 }

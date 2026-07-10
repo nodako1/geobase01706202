@@ -9,18 +9,21 @@ const periodPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 const configSchema = z.object({
   title: z.string().min(1),
+  displayTitle: z.string().optional(),
   categoryTitle: z.string().optional(),
   subtitle: z.string(),
   hookText: z.string().optional(),
   shareExplanation: z.string().optional(),
   metricLabel: z.string().optional(),
   rankingLabel: z.string().optional(),
+  rankingMode: z.enum(['average-share', 'gained-area']).optional(),
   sourceLabel: z.string().optional(),
   focusCountryCode: z.string().length(3).optional(),
   focusCountryLabel: z.string().optional(),
+  focusFaction: z.string().optional(),
   focusPanelTitle: z.string().optional(),
   introEntities: z.array(z.string()).optional(),
-  summaryEntities: z.array(z.string()).min(1).max(3).optional(),
+  summaryEntities: z.array(z.string()).min(1).max(4).optional(),
   endingLessonTitle: z.string().optional(),
   endingLessons: z.array(z.string().min(1)).min(1).max(4).optional(),
   discussionPrompt: z.string().optional(),
@@ -28,6 +31,9 @@ const configSchema = z.object({
   endingOptionA: z.string().optional(),
   endingOptionB: z.string().optional(),
   mapCenterLongitude: z.number().min(-180).max(180).optional(),
+  insetLeft: z.number().optional(),
+  insetTop: z.number().optional(),
+  eventHoldSeconds: z.number().positive().optional(),
   startYear: z.number().int(),
   endYear: z.number().int(),
   startPeriod: z.string().regex(periodPattern).optional(),
@@ -50,8 +56,10 @@ const configSchema = z.object({
 
 const entitySchema = z.record(z.string(), z.object({
   displayName: z.string(),
+  mark: z.string().optional(),
   color: z.string(),
-  priority: z.number().int()
+  priority: z.number().int(),
+  excludeFromRanking: z.boolean().optional()
 }));
 
 const readJson = (file) => JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
@@ -68,7 +76,11 @@ const readCsv = (file) => {
 const config = configSchema.parse(readJson('config.json'));
 const entities = entitySchema.parse(readJson('entities.json'));
 const entityNames = Object.keys(entities).sort((a, b) => entities[a].priority - entities[b].priority);
-for (const name of [...(config.introEntities ?? []), ...(config.summaryEntities ?? [])]) {
+for (const name of [
+  ...(config.introEntities ?? []),
+  ...(config.summaryEntities ?? []),
+  ...(config.focusFaction ? [config.focusFaction] : [])
+]) {
   if (!entities[name]) throw new Error(`Unknown entity in config: ${name}`);
 }
 
@@ -76,11 +88,15 @@ const rows = readCsv('sample.csv').map((row, index) => {
   const fallbackYear = Number(row.year);
   const period = String(row.period ?? (Number.isInteger(fallbackYear) ? `${fallbackYear}-01` : '')).trim();
   const value = Number(row.value);
+  const weight = row.weight === undefined || row.weight === '' ? 1 : Number(row.weight);
   const entity = String(row.entity).trim();
   const countryCode = String(row.country_code).trim().toUpperCase();
   const numericCode = String(row.numeric_code).trim().padStart(3, '0');
   if (!periodPattern.test(period) || !Number.isFinite(value) || value < 0 || !entities[entity]) {
     throw new Error(`Invalid sample.csv row ${index + 2}`);
+  }
+  if (!Number.isFinite(weight) || weight <= 0) {
+    throw new Error(`Invalid weight at sample.csv row ${index + 2}`);
   }
   if (!/^[A-Z]{3}$/.test(countryCode) || !/^\d{3}$/.test(numericCode)) {
     throw new Error(`Invalid country code at sample.csv row ${index + 2}`);
@@ -94,7 +110,8 @@ const rows = readCsv('sample.csv').map((row, index) => {
     countryName: String(row.country_name).trim(),
     numericCode,
     entity,
-    value
+    value,
+    weight
   };
 });
 
@@ -127,6 +144,7 @@ const periods = [...periodSet]
 let previousByCountry = new Map();
 let previousShares = new Map();
 let previousLeader = null;
+const baselineSharesByCountry = new Map();
 const years = [];
 const warnings = [];
 
@@ -156,22 +174,48 @@ for (const period of periods) {
       numericCode: first.numericCode,
       entity: leader.entity,
       value: leader.value,
+      weight: first.weight,
       shares,
       previousEntity,
       changed: previousEntity !== null && previousEntity !== leader.entity
     });
   }
 
-  const averageShares = new Map(entityNames.map((entity) => [entity, 0]));
-  for (const country of countries) {
-    for (const share of country.shares) {
-      averageShares.set(share.entity, (averageShares.get(share.entity) ?? 0) + share.value);
+  if (years.length === 0) {
+    for (const country of countries) {
+      baselineSharesByCountry.set(
+        country.countryCode,
+        new Map(country.shares.map((share) => [share.entity, share.value]))
+      );
     }
   }
-  const divisor = Math.max(1, countries.length);
-  const ranking = entityNames
+
+  const eligibleEntities = entityNames.filter((entity) => !entities[entity].excludeFromRanking);
+  const rankingValues = new Map(eligibleEntities.map((entity) => [entity, 0]));
+  const totalWeight = Math.max(1, countries.reduce((sum, country) => sum + country.weight, 0));
+
+  for (const country of countries) {
+    const baseline = baselineSharesByCountry.get(country.countryCode) ?? new Map();
+    for (const share of country.shares) {
+      if (!rankingValues.has(share.entity)) continue;
+      if ((config.rankingMode ?? 'average-share') === 'gained-area') {
+        const gained = Math.max(0, share.value - (baseline.get(share.entity) ?? 0));
+        rankingValues.set(
+          share.entity,
+          (rankingValues.get(share.entity) ?? 0) + (gained / 100) * country.weight
+        );
+      } else {
+        rankingValues.set(
+          share.entity,
+          (rankingValues.get(share.entity) ?? 0) + (share.value / 100) * country.weight
+        );
+      }
+    }
+  }
+
+  const ranking = eligibleEntities
     .map((entity) => {
-      const share = (averageShares.get(entity) ?? 0) / divisor;
+      const share = ((rankingValues.get(entity) ?? 0) / totalWeight) * 100;
       return {
         entity,
         share,
@@ -182,7 +226,7 @@ for (const period of periods) {
     .sort((a, b) => b.share - a.share || a.priority - b.priority)
     .map((row, index) => ({entity: row.entity, share: row.share, delta: row.delta, rank: index + 1}));
 
-  const leader = ranking[0]?.share ? ranking[0].entity : null;
+  const leader = ranking[0]?.share > 0.0001 ? ranking[0].entity : null;
   years.push({
     period,
     periodLabel: `${year}年${month}月`,
@@ -205,7 +249,14 @@ for (const period of periods) {
 
 if (years.length < 2) throw new Error('At least two periods are required to render a timeline.');
 
-const output = {config, entities, years, warnings, generatedAt: new Date().toISOString()};
+const output = {
+  config,
+  entities,
+  years,
+  warnings,
+  baselinePeriod: years[0]?.period,
+  generatedAt: new Date().toISOString()
+};
 fs.mkdirSync(path.join(root, 'src', 'generated'), {recursive: true});
 fs.writeFileSync(path.join(root, 'src', 'generated', 'video-data.json'), JSON.stringify(output, null, 2) + '\n');
-console.log(`Prepared ${years.length} monthly share snapshots from ${rows.length} rows.`);
+console.log(`Prepared ${years.length} weighted monthly control snapshots from ${rows.length} rows.`);
