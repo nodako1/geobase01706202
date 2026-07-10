@@ -1,9 +1,8 @@
-year,title,description
-2009,Internet Explorerが最大勢力,世界の多くの国で高い利用シェアを持つ
-2011,Chromeが急速に拡大,南米や欧州でChromeの色がじわじわ広がる
-2012,世界平均で首位交代,ChromeがInternet Explorerを上回る
-2014,Internet Explorerが急減,かつての最大勢力が各国で縮小する
-2015,アジアでUC Browserが拡大,インドや東南アジアで独自の勢力を形成
-2016,モバイル専用ブラウザが後退,Opera MiniとUC Browserの利用シェアが縮小
-2019,日本でSafariが首位へ,iPhone利用の多い日本が世界平均とは異なる変化を見せる
-2025,Chrome中心の勢力図,Chromeが最大勢力を維持しSafariとEdgeが追う
+period,title,description
+2024-01,ChatGPTが圧倒的首位,生成AI市場の大部分をChatGPTが占める
+2024-05,Geminiが追撃開始,Googleの生成AIが各国で利用率を伸ばす
+2024-09,Perplexityが存在感,検索型AIとして欧米やアジアで利用が拡大
+2025-02,DeepSeekショック,中国発の新勢力が短期間で急伸する
+2025-05,Claudeが英語圏で成長,米国や英国を中心に利用比率が上昇
+2025-10,日本でGeminiとCopilotが拡大,日本は世界平均よりGoogle・Microsoft系が強い構成へ
+2026-06,2位争いが激化,ChatGPTをGemini・Perplexity・Copilot・Claudeが追う
