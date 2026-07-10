@@ -1,20 +1,25 @@
 export type EntityConfig = {
   displayName: string;
+  mark?: string;
   color: string;
   priority: number;
+  excludeFromRanking?: boolean;
 };
 
 export type VideoConfig = {
   title: string;
+  displayTitle?: string;
   categoryTitle?: string;
   subtitle: string;
   hookText?: string;
   shareExplanation?: string;
   metricLabel?: string;
   rankingLabel?: string;
+  rankingMode?: 'average-share' | 'gained-area';
   sourceLabel?: string;
   focusCountryCode?: string;
   focusCountryLabel?: string;
+  focusFaction?: string;
   focusPanelTitle?: string;
   introEntities?: string[];
   summaryEntities?: string[];
@@ -25,6 +30,9 @@ export type VideoConfig = {
   endingOptionA?: string;
   endingOptionB?: string;
   mapCenterLongitude?: number;
+  insetLeft?: number;
+  insetTop?: number;
+  eventHoldSeconds?: number;
   startYear: number;
   endYear: number;
   startPeriod?: string;
@@ -55,6 +63,7 @@ export type CountryWinner = {
   numericCode: string;
   entity: string;
   value: number;
+  weight: number;
   shares: BrowserShare[];
   previousEntity: string | null;
   changed: boolean;
@@ -94,5 +103,6 @@ export type PreparedVideoData = {
   entities: Record<string, EntityConfig>;
   years: YearSnapshot[];
   warnings: string[];
+  baselinePeriod?: string;
   generatedAt: string;
 };
