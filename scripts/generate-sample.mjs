@@ -24,72 +24,71 @@ const entities = [
   'Edge'
 ];
 
-const firefoxStrong = new Set(['DEU','AUT','POL','CZE','SVK','HUN','FIN','ROU']);
-const operaStrong = new Set(['RUS','UKR']);
-const earlyChrome = new Set(['BRA','ARG','CHL','COL','PER','TUR']);
-const ieHoldouts = new Set(['JPN','KOR','CHN']);
-const operaMiniMarkets = new Set(['NGA','KEN','GHA']);
-const ucMarkets = new Set(['IND','PAK','BGD','IDN']);
+const firefoxStrong = new Set(['DEU','AUT','POL','CZE','SVK','HUN','FIN','ROU','FRA']);
+const safariStrong = new Set(['USA','CAN','GBR','IRL','AUS','NZL','JPN']);
+const latinAmerica = new Set(['MEX','BRA','ARG','CHL','COL','PER']);
+const operaMiniMarkets = new Set(['NGA','KEN','GHA','ZAF','EGY']);
+const ucMarkets = new Set(['IND','PAK','BGD','IDN','THA','VNM','PHL','CHN']);
+const edgeMarkets = new Set(['USA','CAN','GBR','DEU','FRA','AUS','JPN']);
 
-const winnerFor = (year, code) => {
-  if (code === 'JPN') {
-    if (year <= 2013) return 'Internet Explorer';
-    if (year <= 2018) return 'Chrome';
-    return 'Safari';
-  }
-  if (code === 'KOR') return year <= 2013 ? 'Internet Explorer' : 'Chrome';
-  if (code === 'CHN') {
-    if (year <= 2011) return 'Internet Explorer';
-    if (year >= 2014 && year <= 2016) return 'UC Browser';
-    return 'Chrome';
-  }
-  if (operaMiniMarkets.has(code)) {
-    if (year <= 2010) return 'Internet Explorer';
-    if (year <= 2015) return 'Opera Mini';
-    return 'Chrome';
-  }
-  if (ucMarkets.has(code)) {
-    if (year <= 2010) return code === 'IND' ? 'Firefox' : 'Internet Explorer';
-    if (year <= 2013) return 'Chrome';
-    if (year <= 2016) return 'UC Browser';
-    return 'Chrome';
-  }
-  if (operaStrong.has(code)) {
-    if (year <= 2010) return 'Opera Mini';
-    return 'Chrome';
-  }
-  if (firefoxStrong.has(code)) {
-    if (year <= 2010) return 'Firefox';
-    if (year === 2011 && ['DEU','AUT','POL','CZE'].includes(code)) return 'Firefox';
-    return 'Chrome';
-  }
-  if (earlyChrome.has(code)) return year <= 2009 ? 'Internet Explorer' : 'Chrome';
-  if (ieHoldouts.has(code)) return year <= 2013 ? 'Internet Explorer' : 'Chrome';
-  if (year <= 2010) return 'Internet Explorer';
-  if (year === 2011 && ['FRA','NLD','BEL','CHE','SWE','NOR'].includes(code)) return 'Firefox';
-  return 'Chrome';
+const bell = (value, center, width) => Math.exp(-Math.pow((value - center) / width, 2));
+
+const globalCurve = (year) => {
+  const t = year - 2009;
+  return {
+    'Internet Explorer': 55 * Math.exp(-0.37 * t) + 0.15,
+    Firefox: Math.max(3.8, 29 - t * 1.55),
+    Chrome: 4 + 69 / (1 + Math.exp(-0.67 * (t - 3.1))),
+    Safari: 3.8 + 14 / (1 + Math.exp(-0.34 * (t - 7.2))),
+    'Opera Mini': 0.8 + 3.8 * bell(t, 4.2, 3.2),
+    'UC Browser': 0.35 + 3.4 * bell(t, 6.2, 2.8),
+    Edge: t < 6 ? 0.05 : 0.5 + 6.6 * (1 - Math.exp(-0.25 * (t - 6)))
+  };
 };
 
-const winnerShare = (entity, year, codeIndex) => {
-  const wobble = ((year * 7 + codeIndex * 3) % 9) - 4;
-  if (entity === 'Internet Explorer') return Math.max(37, 64 - (year - 2009) * 6 + wobble * 0.35);
-  if (entity === 'Firefox') return 38 + wobble * 0.45;
-  if (entity === 'Chrome') return Math.min(79, 42 + (year - 2010) * 2.25 + wobble * 0.4);
-  if (entity === 'Safari') return 47 + (year - 2019) * 1.3 + wobble * 0.3;
-  if (entity === 'Opera Mini') return 44 + wobble * 0.55;
-  if (entity === 'UC Browser') return 46 + wobble * 0.5;
-  return 36 + wobble * 0.4;
+const deterministicWobble = (year, code, entity) => {
+  const seed = [...`${code}:${entity}`].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return 1 + Math.sin(year * 0.73 + seed * 0.11) * 0.055;
+};
+
+const countryShares = (year, code) => {
+  const t = year - 2009;
+  const raw = globalCurve(year);
+
+  if (firefoxStrong.has(code)) raw.Firefox *= 1.15 + 0.45 * Math.exp(-0.17 * t);
+  if (safariStrong.has(code)) raw.Safari *= 1.45;
+  if (latinAmerica.has(code)) raw.Chrome *= 1.18;
+  if (operaMiniMarkets.has(code)) raw['Opera Mini'] *= 1 + 5.4 * bell(t, 4.8, 3.1);
+  if (ucMarkets.has(code)) raw['UC Browser'] *= 1 + 5.2 * bell(t, 6.3, 2.7);
+  if (edgeMarkets.has(code) && year >= 2020) raw.Edge *= 1.35;
+
+  if (code === 'JPN') {
+    raw['Internet Explorer'] *= year <= 2013 ? 1.48 : 0.9;
+    raw.Chrome *= year >= 2017 ? 0.72 : 0.9;
+    raw.Safari *= year >= 2017 ? 3.9 : 1.55;
+  }
+  if (code === 'KOR' && year <= 2013) raw['Internet Explorer'] *= 1.5;
+  if (code === 'CHN') {
+    raw['Internet Explorer'] *= year <= 2012 ? 1.35 : 0.8;
+    raw['UC Browser'] *= 1 + 3.2 * bell(t, 6.1, 2.5);
+    raw.Safari *= 0.55;
+  }
+  if (code === 'RUS' || code === 'UKR') {
+    raw.Firefox *= year <= 2012 ? 1.22 : 1;
+    raw['Opera Mini'] *= 1 + 1.5 * bell(t, 3.5, 2.8);
+  }
+
+  for (const entity of entities) raw[entity] *= deterministicWobble(year, code, entity);
+  const total = entities.reduce((sum, entity) => sum + Math.max(0, raw[entity]), 0);
+  return Object.fromEntries(entities.map((entity) => [entity, (Math.max(0, raw[entity]) / total) * 100]));
 };
 
 const lines = ['year,country_code,country_name,numeric_code,entity,value'];
 for (let year = 2009; year <= 2025; year++) {
-  countries.forEach(([code,name,numeric], countryIndex) => {
-    const winner = winnerFor(year, code);
-    const top = winnerShare(winner, year, countryIndex);
-    entities.forEach((entity, entityIndex) => {
-      const base = 4 + ((year + countryIndex * 2 + entityIndex * 5) % 16);
-      const value = entity === winner ? top : Math.min(top - 7, base + (entity === 'Chrome' ? Math.max(0, year - 2009) * 0.7 : 0));
-      lines.push([year,code,name,numeric,entity,value.toFixed(1)].join(','));
+  countries.forEach(([code, name, numeric]) => {
+    const shares = countryShares(year, code);
+    entities.forEach((entity) => {
+      lines.push([year, code, name, numeric, entity, shares[entity].toFixed(3)].join(','));
     });
   });
 }
@@ -97,4 +96,4 @@ for (let year = 2009; year <= 2025; year++) {
 const outputDir = path.join(process.cwd(), 'public', 'data');
 fs.mkdirSync(outputDir, {recursive: true});
 fs.writeFileSync(path.join(outputDir, 'sample.csv'), lines.join('\n') + '\n');
-console.log(`Generated ${lines.length - 1} browser-market rows for ${countries.length} countries.`);
+console.log(`Generated ${lines.length - 1} proportional browser-share rows for ${countries.length} countries.`);
