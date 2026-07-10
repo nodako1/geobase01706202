@@ -8,10 +8,11 @@ const {config, years} = data;
 
 const introFrames = Math.round(config.introSeconds * config.fps);
 const yearFrames = Math.max(1, Math.round(config.secondsPerYear * config.fps));
+const intervalCount = Math.max(1, years.length - 1);
 const outroFrames = Math.round(config.outroSeconds * config.fps);
 const durationInFrames = Math.max(
   1,
-  introFrames + years.length * yearFrames + outroFrames,
+  introFrames + intervalCount * yearFrames + outroFrames,
 );
 
 export const RemotionRoot = () => {
