@@ -7,6 +7,14 @@ export type EntityConfig = {
 export type VideoConfig = {
   title: string;
   subtitle: string;
+  hookText?: string;
+  metricLabel?: string;
+  sourceLabel?: string;
+  focusCountryCode?: string;
+  focusCountryLabel?: string;
+  endingQuestion?: string;
+  endingOptionA?: string;
+  endingOptionB?: string;
   startYear: number;
   endYear: number;
   secondsPerYear: number;

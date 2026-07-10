@@ -1,6 +1,9 @@
 {
-  "Atlas": {"displayName": "Atlas", "color": "#27B3FF", "priority": 1},
-  "Nova": {"displayName": "Nova", "color": "#FFB02E", "priority": 2},
-  "Orion": {"displayName": "Orion", "color": "#9D71FF", "priority": 3},
-  "Zenith": {"displayName": "Zenith", "color": "#3DE19D", "priority": 4}
+  "Internet Explorer": {"displayName": "Internet Explorer", "color": "#39A9F5", "priority": 1},
+  "Firefox": {"displayName": "Firefox", "color": "#FF7139", "priority": 2},
+  "Chrome": {"displayName": "Chrome", "color": "#34A853", "priority": 3},
+  "Safari": {"displayName": "Safari", "color": "#54B9FF", "priority": 4},
+  "Opera Mini": {"displayName": "Opera Mini", "color": "#FF3154", "priority": 5},
+  "UC Browser": {"displayName": "UC Browser", "color": "#FFB000", "priority": 6},
+  "Edge": {"displayName": "Edge", "color": "#22D3C5", "priority": 7}
 }
