@@ -51,14 +51,16 @@ jobs:
 
       - name: Verify output
         if: github.event_name == 'workflow_dispatch'
-        run: test -s out/geobase.mp4
+        run: |
+          compgen -G "out/GeoBase_*.mp4" > /dev/null
+          test -s "$(find out -maxdepth 1 -name 'GeoBase_*.mp4' -print -quit)"
 
       - name: Upload rendered video
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: geobase-browser-share-${{ github.run_number }}
-          path: out/geobase.mp4
+          name: GeoBase-video-${{ github.run_number }}
+          path: out/GeoBase_*.mp4
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -66,5 +68,7 @@ jobs:
       - name: Add download instructions
         if: github.event_name == 'workflow_dispatch'
         run: |
+          VIDEO_NAME="$(basename "$(find out -maxdepth 1 -name 'GeoBase_*.mp4' -print -quit)")"
           echo "## Geo Base video generated" >> "$GITHUB_STEP_SUMMARY"
-          echo "Download **geobase-browser-share-${{ github.run_number }}** from the Artifacts section." >> "$GITHUB_STEP_SUMMARY"
+          echo "Download **GeoBase-video-${{ github.run_number }}** from Artifacts." >> "$GITHUB_STEP_SUMMARY"
+          echo "MP4 file: **${VIDEO_NAME}**" >> "$GITHUB_STEP_SUMMARY"
