@@ -1,0 +1,6 @@
+{
+  "Atlas": {"displayName": "Atlas", "color": "#27B3FF", "priority": 1},
+  "Nova": {"displayName": "Nova", "color": "#FFB02E", "priority": 2},
+  "Orion": {"displayName": "Orion", "color": "#9D71FF", "priority": 3},
+  "Zenith": {"displayName": "Zenith", "color": "#3DE19D", "priority": 4}
+}
