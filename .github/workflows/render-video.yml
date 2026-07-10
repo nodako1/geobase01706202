@@ -1,0 +1,55 @@
+name: Render Geo Base Video
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: geobase-render-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: Render MP4
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Remotion browser
+        run: npx remotion browser ensure
+
+      - name: Validate data and source code
+        run: npm run check
+
+      - name: Render video
+        run: npm run render -- --concurrency=2
+
+      - name: Verify output
+        run: test -s out/geobase.mp4
+
+      - name: Upload rendered video
+        uses: actions/upload-artifact@v4
+        with:
+          name: geobase-video-${{ github.run_number }}
+          path: out/geobase.mp4
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Add download instructions
+        run: |
+          echo "## Geo Base video generated" >> "$GITHUB_STEP_SUMMARY"
+          echo "Open the **Artifacts** section of this workflow run and download **geobase-video-${{ github.run_number }}**." >> "$GITHUB_STEP_SUMMARY"
