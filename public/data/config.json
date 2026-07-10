@@ -22,16 +22,12 @@
     "ChatGPT",
     "Google Gemini"
   ],
-  "endingLessonTitle": "この動画から学べること",
   "endingLessons": [
     "ChatGPTは依然として圧倒的だが、2位以下の競争は急速に激しくなっている",
     "日本は世界平均よりGeminiとCopilotの比率が高く、利用構成に地域差がある",
     "生成AIの勢力図は固定されておらず、新機能や新サービスで短期間に変わり得る"
   ],
-  "discussionPrompt": "あなたが仕事で最も使う生成AIは？ 精度・速さ・料金のどれで選びましたか",
-  "endingQuestion": "次に見たい世界勢力図は？",
-  "endingOptionA": "スマホOS",
-  "endingOptionB": "検索エンジン",
+  "discussionPrompt": "あなたが仕事で最も使う生成AIは？\n精度・速さ・料金のどれで選びましたか",
   "mapCenterLongitude": 150,
   "startPeriod": "2024-01",
   "endPeriod": "2026-06",
@@ -40,7 +36,7 @@
   "secondsPerPeriod": 0.78,
   "secondsPerYear": 0.78,
   "introSeconds": 3.2,
-  "outroSeconds": 7.5,
+  "outroSeconds": 9.5,
   "transitionRatio": 1,
   "outputWidth": 1080,
   "outputHeight": 1920,
