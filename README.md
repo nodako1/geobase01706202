@@ -51,14 +51,28 @@ GeoBase_世界の生成AI勢力図_2024-01-2026-06.mp4
 
 ## GitHub Actionsで動画を生成する
 
+### マージ後の自動生成
+
+Pull Requestを`main`へマージすると、`main`へのpushを検知してGitHub Actionsが自動的に起動します。
+
+1. CSV生成・データ検証・TypeScript型検査
+2. 日本語フォントのインストール
+3. Remotionブラウザの準備
+4. MP4レンダリング
+5. Artifactへのアップロード
+
+実行完了後、対象のWorkflow Runを開き、`Artifacts`から`GeoBase-video-実行番号`をダウンロードしてください。ZIP内に正式なファイル名のMP4が入っています。
+
+### 手動で再生成する
+
+同じ動画を再生成したい場合は、次の手順でも実行できます。
+
 1. GitHubリポジトリ上部の`Actions`を開く
 2. `Render Geo Base Video`を選択する
 3. `Run workflow`を押す
-4. 実行完了後、対象のWorkflow Runを開く
-5. `Artifacts`から`GeoBase-video-実行番号`をダウンロードする
-6. ZIP内の`GeoBase_世界の生成AI勢力図_2024-01-2026-06.mp4`を取り出す
+4. 実行完了後、`Artifacts`から動画をダウンロードする
 
-Artifactの保存期間は14日です。手動レンダリング時にはGitHub Actionsへ`fonts-noto-cjk`を導入し、日本語の文字化けを防止します。
+Pull Request作成時は、無駄なレンダリングを避けるため検証だけを実行します。Artifactの保存期間は14日です。
 
 ## ローカルセットアップ
 

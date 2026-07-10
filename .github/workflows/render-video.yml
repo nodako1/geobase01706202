@@ -2,6 +2,9 @@ name: Render Geo Base Video
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -10,8 +13,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: geobase-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: geobase-${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   validate-and-render:
@@ -35,28 +38,28 @@ jobs:
         run: npm run check
 
       - name: Install Japanese fonts
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
           fc-cache -f
 
       - name: Install Remotion browser
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         run: npx remotion browser ensure
 
       - name: Render video
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         run: npm run render -- --concurrency=2
 
       - name: Verify output
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         run: |
           compgen -G "out/GeoBase_*.mp4" > /dev/null
           test -s "$(find out -maxdepth 1 -name 'GeoBase_*.mp4' -print -quit)"
 
       - name: Upload rendered video
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: GeoBase-video-${{ github.run_number }}
@@ -66,9 +69,14 @@ jobs:
           compression-level: 0
 
       - name: Add download instructions
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         run: |
           VIDEO_NAME="$(basename "$(find out -maxdepth 1 -name 'GeoBase_*.mp4' -print -quit)")"
           echo "## Geo Base video generated" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Triggered automatically by an update to **main**." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Triggered manually from Actions." >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "Download **GeoBase-video-${{ github.run_number }}** from Artifacts." >> "$GITHUB_STEP_SUMMARY"
           echo "MP4 file: **${VIDEO_NAME}**" >> "$GITHUB_STEP_SUMMARY"
