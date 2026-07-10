@@ -5,15 +5,22 @@ import {z} from 'zod';
 
 const root = process.cwd();
 const dir = path.join(root, 'public', 'data');
+const periodPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 const configSchema = z.object({
   title: z.string().min(1),
+  categoryTitle: z.string().optional(),
   subtitle: z.string(),
   hookText: z.string().optional(),
+  shareExplanation: z.string().optional(),
   metricLabel: z.string().optional(),
+  rankingLabel: z.string().optional(),
   sourceLabel: z.string().optional(),
   focusCountryCode: z.string().length(3).optional(),
   focusCountryLabel: z.string().optional(),
+  focusPanelTitle: z.string().optional(),
+  introEntities: z.array(z.string()).optional(),
+  summaryEntities: z.array(z.string()).min(1).max(3).optional(),
   endingLessonTitle: z.string().optional(),
   endingLessons: z.array(z.string().min(1)).min(1).max(4).optional(),
   discussionPrompt: z.string().optional(),
@@ -23,8 +30,9 @@ const configSchema = z.object({
   mapCenterLongitude: z.number().min(-180).max(180).optional(),
   startYear: z.number().int(),
   endYear: z.number().int(),
-  startPeriod: z.string().optional(),
-  endPeriod: z.string().optional(),
+  startPeriod: z.string().regex(periodPattern).optional(),
+  endPeriod: z.string().regex(periodPattern).optional(),
+  secondsPerPeriod: z.number().positive().optional(),
   secondsPerYear: z.number().positive(),
   introSeconds: z.number().nonnegative(),
   outroSeconds: z.number().nonnegative(),
@@ -37,7 +45,8 @@ const configSchema = z.object({
   backgroundColor: z.string(),
   showEvents: z.boolean(),
   showDelta: z.boolean()
-}).refine((value) => value.startYear <= value.endYear);
+}).refine((value) => value.startYear <= value.endYear)
+  .refine((value) => !value.startPeriod || !value.endPeriod || value.startPeriod <= value.endPeriod);
 
 const entitySchema = z.record(z.string(), z.object({
   displayName: z.string(),
@@ -59,21 +68,28 @@ const readCsv = (file) => {
 const config = configSchema.parse(readJson('config.json'));
 const entities = entitySchema.parse(readJson('entities.json'));
 const entityNames = Object.keys(entities).sort((a, b) => entities[a].priority - entities[b].priority);
+for (const name of [...(config.introEntities ?? []), ...(config.summaryEntities ?? [])]) {
+  if (!entities[name]) throw new Error(`Unknown entity in config: ${name}`);
+}
 
 const rows = readCsv('sample.csv').map((row, index) => {
-  const year = Number(row.year);
+  const fallbackYear = Number(row.year);
+  const period = String(row.period ?? (Number.isInteger(fallbackYear) ? `${fallbackYear}-01` : '')).trim();
   const value = Number(row.value);
   const entity = String(row.entity).trim();
   const countryCode = String(row.country_code).trim().toUpperCase();
   const numericCode = String(row.numeric_code).trim().padStart(3, '0');
-  if (!Number.isInteger(year) || !Number.isFinite(value) || value < 0 || !entities[entity]) {
+  if (!periodPattern.test(period) || !Number.isFinite(value) || value < 0 || !entities[entity]) {
     throw new Error(`Invalid sample.csv row ${index + 2}`);
   }
   if (!/^[A-Z]{3}$/.test(countryCode) || !/^\d{3}$/.test(numericCode)) {
     throw new Error(`Invalid country code at sample.csv row ${index + 2}`);
   }
+  const [year, month] = period.split('-').map(Number);
   return {
+    period,
     year,
+    month,
     countryCode,
     countryName: String(row.country_name).trim(),
     numericCode,
@@ -85,19 +101,28 @@ const rows = readCsv('sample.csv').map((row, index) => {
 const eventRows = fs.existsSync(path.join(dir, 'events.csv')) ? readCsv('events.csv') : [];
 const events = new Map();
 for (const row of eventRows) {
-  const year = Number(row.year);
-  const list = events.get(year) ?? [];
-  list.push({year, title: String(row.title), description: String(row.description)});
-  events.set(year, list);
+  const fallbackYear = Number(row.year);
+  const period = String(row.period ?? (Number.isInteger(fallbackYear) ? `${fallbackYear}-01` : '')).trim();
+  if (!periodPattern.test(period)) throw new Error(`Invalid event period: ${period}`);
+  const [year, month] = period.split('-').map(Number);
+  const list = events.get(period) ?? [];
+  list.push({period, year, month, title: String(row.title), description: String(row.description)});
+  events.set(period, list);
 }
 
 const grouped = new Map();
 for (const row of rows) {
-  const key = `${row.year}:${row.countryCode}`;
+  const key = `${row.period}:${row.countryCode}`;
   const list = grouped.get(key) ?? [];
   list.push(row);
   grouped.set(key, list);
 }
+
+const periodSet = new Set(rows.map((row) => row.period));
+const periods = [...periodSet]
+  .filter((period) => !config.startPeriod || period >= config.startPeriod)
+  .filter((period) => !config.endPeriod || period <= config.endPeriod)
+  .sort();
 
 let previousByCountry = new Map();
 let previousShares = new Map();
@@ -105,10 +130,11 @@ let previousLeader = null;
 const years = [];
 const warnings = [];
 
-for (let year = config.startYear; year <= config.endYear; year++) {
+for (const period of periods) {
+  const [year, month] = period.split('-').map(Number);
   const countries = [];
   for (const [key, candidates] of grouped) {
-    if (!key.startsWith(`${year}:`)) continue;
+    if (!key.startsWith(`${period}:`)) continue;
     const first = candidates[0];
     const rawByEntity = new Map(entityNames.map((entity) => [entity, 0]));
     for (const candidate of candidates) {
@@ -116,7 +142,7 @@ for (let year = config.startYear; year <= config.endYear; year++) {
     }
     const total = [...rawByEntity.values()].reduce((sum, value) => sum + value, 0);
     if (total <= 0) {
-      warnings.push(`${year}:${first.countryCode}: total share is zero`);
+      warnings.push(`${period}:${first.countryCode}: total share is zero`);
       continue;
     }
     const shares = entityNames
@@ -158,23 +184,28 @@ for (let year = config.startYear; year <= config.endYear; year++) {
 
   const leader = ranking[0]?.share ? ranking[0].entity : null;
   years.push({
+    period,
+    periodLabel: `${year}年${month}月`,
     year,
+    month,
     countries,
     ranking,
     leader,
     previousLeader,
     leaderChanged: previousLeader !== null && leader !== previousLeader,
     changedCountries: countries.filter((country) => country.changed).length,
-    events: events.get(year) ?? []
+    events: events.get(period) ?? []
   });
 
-  if (countries.length === 0) warnings.push(`${year}: no country data`);
+  if (countries.length === 0) warnings.push(`${period}: no country data`);
   previousByCountry = new Map(countries.map((country) => [country.countryCode, country.entity]));
   previousShares = new Map(ranking.map((row) => [row.entity, row.share]));
   previousLeader = leader;
 }
 
+if (years.length < 2) throw new Error('At least two periods are required to render a timeline.');
+
 const output = {config, entities, years, warnings, generatedAt: new Date().toISOString()};
 fs.mkdirSync(path.join(root, 'src', 'generated'), {recursive: true});
 fs.writeFileSync(path.join(root, 'src', 'generated', 'video-data.json'), JSON.stringify(output, null, 2) + '\n');
-console.log(`Prepared ${years.length} annual share snapshots from ${rows.length} rows.`);
+console.log(`Prepared ${years.length} monthly share snapshots from ${rows.length} rows.`);

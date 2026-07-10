@@ -1,9 +1,8 @@
 {
-  "Internet Explorer": {"displayName": "Internet Explorer", "color": "#39A9F5", "priority": 1},
-  "Firefox": {"displayName": "Firefox", "color": "#FF7139", "priority": 2},
-  "Chrome": {"displayName": "Chrome", "color": "#34A853", "priority": 3},
-  "Safari": {"displayName": "Safari", "color": "#54B9FF", "priority": 4},
-  "Opera Mini": {"displayName": "Opera Mini", "color": "#FF3154", "priority": 5},
-  "UC Browser": {"displayName": "UC Browser", "color": "#FFB000", "priority": 6},
-  "Edge": {"displayName": "Edge", "color": "#22D3C5", "priority": 7}
+  "ChatGPT": {"displayName": "ChatGPT", "color": "#10A37F", "priority": 1},
+  "Google Gemini": {"displayName": "Gemini", "color": "#4E8DF7", "priority": 2},
+  "Perplexity": {"displayName": "Perplexity", "color": "#20B8CD", "priority": 3},
+  "Claude": {"displayName": "Claude", "color": "#D97757", "priority": 4},
+  "Microsoft Copilot": {"displayName": "Copilot", "color": "#9B6CFF", "priority": 5},
+  "DeepSeek": {"displayName": "DeepSeek", "color": "#3D6DEB", "priority": 6}
 }
