@@ -1,6 +1,6 @@
 import {Composition} from 'remotion';
 import preparedData from './generated/video-data.json';
-import {GeoBaseVideo} from './GeoBaseVideo';
+import {GeoBaseVideoV2} from './GeoBaseVideoV2';
 import type {PreparedVideoData} from './types';
 
 const data = preparedData as PreparedVideoData;
@@ -19,7 +19,7 @@ export const RemotionRoot = () => {
   return (
     <Composition
       id="GeoBase"
-      component={GeoBaseVideo}
+      component={GeoBaseVideoV2}
       durationInFrames={durationInFrames}
       fps={config.fps}
       width={config.outputWidth}
