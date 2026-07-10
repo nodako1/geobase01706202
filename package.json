@@ -1,0 +1,37 @@
+{
+  "name": "geo-base",
+  "version": "0.1.0",
+  "private": true,
+  "description": "時系列データから世界勢力図動画を生成するRemotionベースのエンジン",
+  "scripts": {
+    "prepare:data": "node scripts/prepare-data.mjs",
+    "studio": "npm run prepare:data && remotion studio src/index.ts",
+    "render": "npm run prepare:data && remotion render src/index.ts GeoBase out/geobase.mp4 --codec=h264",
+    "render:still": "npm run prepare:data && remotion still src/index.ts GeoBase out/geobase-final.png --frame=350",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run prepare:data && npm run typecheck"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.487",
+    "d3-geo": "^3.1.1",
+    "papaparse": "^5.5.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "4.0.487",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/d3-geo": "^3.1.0",
+    "@types/node": "^24.0.0",
+    "@types/papaparse": "^5.3.16",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/topojson-client": "^3.1.5",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
