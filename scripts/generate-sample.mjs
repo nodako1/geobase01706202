@@ -21,5 +21,7 @@ for (let year = 2000; year <= 2010; year++) {
     entities.forEach((entity, e) => lines.push([year,code,name,numeric,entity,entity === winner ? 55 + ((year+i)%10) : 15 + ((year+i+e*3)%15)].join(',')));
   });
 }
-fs.writeFileSync(path.join(process.cwd(),'public/data/sample.csv'), lines.join('\n') + '\n');
+const outputDir = path.join(process.cwd(), 'public', 'data');
+fs.mkdirSync(outputDir, {recursive: true});
+fs.writeFileSync(path.join(outputDir, 'sample.csv'), lines.join('\n') + '\n');
 console.log(`Generated ${lines.length - 1} sample rows.`);
