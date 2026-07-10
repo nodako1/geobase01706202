@@ -34,6 +34,13 @@ jobs:
       - name: Validate data and source code
         run: npm run check
 
+      - name: Install Japanese fonts
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fc-cache -f
+
       - name: Install Remotion browser
         if: github.event_name == 'workflow_dispatch'
         run: npx remotion browser ensure
@@ -50,7 +57,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: geobase-browser-wars-${{ github.run_number }}
+          name: geobase-browser-share-${{ github.run_number }}
           path: out/geobase.mp4
           if-no-files-found: error
           retention-days: 14
@@ -59,5 +66,5 @@ jobs:
       - name: Add download instructions
         if: github.event_name == 'workflow_dispatch'
         run: |
-          echo "## Geo Base browser wars video generated" >> "$GITHUB_STEP_SUMMARY"
-          echo "Download **geobase-browser-wars-${{ github.run_number }}** from the Artifacts section." >> "$GITHUB_STEP_SUMMARY"
+          echo "## Geo Base video generated" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download **geobase-browser-share-${{ github.run_number }}** from the Artifacts section." >> "$GITHUB_STEP_SUMMARY"
