@@ -10,7 +10,13 @@ import {
   useVideoConfig,
 } from 'remotion';
 import preparedData from './generated/video-data.json';
-import type {CountryWinner, PreparedVideoData, RankingRow, YearSnapshot} from './types';
+import type {
+  BrowserShare,
+  CountryWinner,
+  PreparedVideoData,
+  RankingRow,
+  YearSnapshot,
+} from './types';
 
 const data = preparedData as PreparedVideoData;
 const topology = worldAtlas as unknown as {objects: {countries: unknown}};
@@ -19,23 +25,34 @@ const world = feature(
   topology.objects.countries as never,
 ) as unknown as {features: Array<{id?: string | number}>};
 
-const projection = geoNaturalEarth1().fitExtent(
-  [
-    [22, 20],
-    [1058, 690],
-  ],
-  world as never,
-);
+const centerLongitude = data.config.mapCenterLongitude ?? 150;
+const projection = geoNaturalEarth1()
+  .rotate([-centerLongitude, 0])
+  .fitExtent(
+    [
+      [18, 22],
+      [1062, 790],
+    ],
+    world as never,
+  );
 const mapPath = geoPath(projection);
 const graticulePath = mapPath(geoGraticule10() as never) ?? undefined;
 const spherePath = mapPath({type: 'Sphere'} as never) ?? undefined;
 const focusFeature = world.features.find(
   (country) => String(country.id ?? '').padStart(3, '0') === '392',
 );
-const focusPoint = focusFeature ? mapPath.centroid(focusFeature as never) : [878, 365];
+const focusPoint = focusFeature ? mapPath.centroid(focusFeature as never) : [540, 360];
 
 const fontFamily =
-  'Inter, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif';
+  '"Noto Sans CJK JP", "Noto Sans JP", "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif';
+const entityOrder = Object.keys(data.entities).sort(
+  (a, b) => data.entities[a].priority - data.entities[b].priority,
+);
+
+const clamp = (value: number, min = 0, max = 1) =>
+  Math.min(max, Math.max(min, value));
+const mix = (from: number, to: number, progress: number) =>
+  from + (to - from) * progress;
 
 const browserMark = (entity: string) => {
   const marks: Record<string, string> = {
@@ -49,14 +66,6 @@ const browserMark = (entity: string) => {
   };
   return marks[entity] ?? entity.slice(0, 2);
 };
-
-const countryFor = (snapshot: YearSnapshot, countryCode?: string) =>
-  countryCode
-    ? snapshot.countries.find((country) => country.countryCode === countryCode)
-    : undefined;
-
-const rankingFor = (snapshot: YearSnapshot, entity: string) =>
-  snapshot.ranking.find((row) => row.entity === entity)?.count ?? 0;
 
 const browserBadge = (entityName: string, size: number) => {
   const entity = data.entities[entityName];
@@ -72,11 +81,10 @@ const browserBadge = (entityName: string, size: number) => {
         justifyContent: 'center',
         background: `linear-gradient(145deg, ${entity.color}, ${entity.color}B8)`,
         color: '#FFFFFF',
-        fontSize: size * (entityName === 'UC Browser' ? 0.29 : 0.38),
-        fontWeight: 950,
-        letterSpacing: -1,
-        border: '2px solid rgba(255,255,255,0.5)',
-        boxShadow: `0 0 ${size * 0.42}px ${entity.color}77`,
+        fontSize: size * (entityName === 'UC Browser' ? 0.28 : 0.38),
+        fontWeight: 900,
+        border: '2px solid rgba(255,255,255,0.48)',
+        boxShadow: `0 0 ${size * 0.38}px ${entity.color}66`,
       }}
     >
       {browserMark(entityName)}
@@ -84,122 +92,267 @@ const browserBadge = (entityName: string, size: number) => {
   );
 };
 
-const MapLayer = ({
-  snapshot,
-  opacity,
-  emphasizeChanges,
-  pulse,
-}: {
-  snapshot: YearSnapshot;
-  opacity: number;
-  emphasizeChanges: boolean;
-  pulse: number;
-}) => {
-  const winners = new Map(
-    snapshot.countries.map((country) => [country.numericCode, country]),
-  );
+const countryFor = (snapshot: YearSnapshot, countryCode?: string) =>
+  countryCode
+    ? snapshot.countries.find((country) => country.countryCode === countryCode)
+    : undefined;
 
+const rankingShare = (snapshot: YearSnapshot, entity: string) =>
+  snapshot.ranking.find((row) => row.entity === entity)?.share ?? 0;
+
+const shareValue = (country: CountryWinner | undefined, entity: string) =>
+  country?.shares.find((share) => share.entity === entity)?.value ?? 0;
+
+type InterpolatedCountry = {
+  countryCode: string;
+  numericCode: string;
+  shares: BrowserShare[];
+  rankedShares: BrowserShare[];
+  leader: string;
+  leaderShare: number;
+  changingLeader: boolean;
+};
+
+const interpolateCountry = (
+  current: CountryWinner | undefined,
+  next: CountryWinner | undefined,
+  progress: number,
+): InterpolatedCountry | null => {
+  const base = current ?? next;
+  if (!base) return null;
+  const shares = entityOrder.map((entity) => ({
+    entity,
+    value: mix(shareValue(current, entity), shareValue(next, entity), progress),
+  }));
+  const total = shares.reduce((sum, share) => sum + share.value, 0) || 1;
+  const normalized = shares.map((share) => ({
+    ...share,
+    value: (share.value / total) * 100,
+  }));
+  const rankedShares = [...normalized].sort(
+    (a, b) =>
+      b.value - a.value ||
+      data.entities[a.entity].priority - data.entities[b.entity].priority,
+  );
+  return {
+    countryCode: base.countryCode,
+    numericCode: base.numericCode,
+    shares: normalized,
+    rankedShares,
+    leader: rankedShares[0].entity,
+    leaderShare: rankedShares[0].value,
+    changingLeader: Boolean(current && next && current.entity !== next.entity),
+  };
+};
+
+const gradientCoordinates = (
+  numericCode: string,
+  bounds: [[number, number], [number, number]],
+) => {
+  const [[x0, y0], [x1, y1]] = bounds;
+  const hash = Number(numericCode) % 4;
+  if (hash === 0) return {x1: x0, y1: (y0 + y1) / 2, x2: x1, y2: (y0 + y1) / 2};
+  if (hash === 1) return {x1: (x0 + x1) / 2, y1: y0, x2: (x0 + x1) / 2, y2: y1};
+  if (hash === 2) return {x1: x0, y1: y1, x2: x1, y2: y0};
+  return {x1: x1, y1: y1, x2: x0, y2: y0};
+};
+
+const ShareStops = ({shares}: {shares: BrowserShare[]}) => {
+  let cursor = 0;
+  const visible = shares.filter((share) => share.value >= 0.08);
   return (
-    <g opacity={opacity}>
-      {world.features.map((country, index) => {
-        const numericCode = String(country.id ?? '').padStart(3, '0');
-        const winner = winners.get(numericCode);
-        const entity = winner ? data.entities[winner.entity] : null;
-        const changed = Boolean(winner?.changed && emphasizeChanges);
-        return (
-          <path
-            key={`${numericCode}-${index}`}
-            d={mapPath(country as never) ?? undefined}
-            fill={entity?.color ?? data.config.noDataColor}
-            fillOpacity={winner ? 0.94 : 0.72}
-            stroke={changed ? '#FFFFFF' : 'rgba(205,222,241,0.54)'}
-            strokeWidth={changed ? 1.8 + pulse * 1.8 : 0.65}
-            strokeLinejoin="round"
-            style={{
-              filter: changed
-                ? `drop-shadow(0 0 ${7 + pulse * 13}px ${entity?.color ?? '#FFFFFF'})`
-                : 'drop-shadow(0 1px 1px rgba(0,0,0,0.42))',
-            }}
-          />
-        );
+    <>
+      {visible.flatMap((share, index) => {
+        const start = cursor;
+        cursor += share.value;
+        const end = index === visible.length - 1 ? 100 : cursor;
+        const color = data.entities[share.entity].color;
+        return [
+          <stop key={`${share.entity}-start`} offset={`${start}%`} stopColor={color} />,
+          <stop key={`${share.entity}-end`} offset={`${end}%`} stopColor={color} />,
+        ];
       })}
-    </g>
+    </>
   );
 };
 
 const WorldMap = ({
   current,
   next,
-  transition,
+  progress,
   phase,
 }: {
   current: YearSnapshot;
   next: YearSnapshot;
-  transition: number;
+  progress: number;
   phase: number;
 }) => {
-  const shown = transition >= 0.5 ? next : current;
-  const pulse = (Math.sin(phase * Math.PI * 4) + 1) / 2;
-  const focus = countryFor(shown, data.config.focusCountryCode);
-  const focusEntity = focus ? data.entities[focus.entity] : null;
+  const currentCountries = new Map(
+    current.countries.map((country) => [country.numericCode, country]),
+  );
+  const nextCountries = new Map(
+    next.countries.map((country) => [country.numericCode, country]),
+  );
+  const rendered = world.features.map((country, index) => {
+    const numericCode = String(country.id ?? '').padStart(3, '0');
+    const path = mapPath(country as never) ?? undefined;
+    const state = interpolateCountry(
+      currentCountries.get(numericCode),
+      nextCountries.get(numericCode),
+      progress,
+    );
+    const bounds = mapPath.bounds(country as never) as [[number, number], [number, number]];
+    return {country, index, numericCode, path, state, bounds};
+  });
+  const pulse = (Math.sin(phase * Math.PI * 6) + 1) / 2;
+  const focus = interpolateCountry(
+    countryFor(current, data.config.focusCountryCode),
+    countryFor(next, data.config.focusCountryCode),
+    progress,
+  );
+  const focusColor = focus ? data.entities[focus.leader].color : '#FFFFFF';
 
   return (
     <div
       style={{
         position: 'relative',
-        height: 715,
+        height: 840,
         borderRadius: 38,
         overflow: 'hidden',
         background:
-          'radial-gradient(circle at 52% 45%, rgba(29,73,112,0.75), rgba(4,13,24,0.97) 68%)',
-        border: '1px solid rgba(181,218,255,0.20)',
+          'radial-gradient(circle at 50% 45%, rgba(28,77,116,0.78), rgba(3,12,22,0.98) 70%)',
+        border: '1px solid rgba(181,218,255,0.22)',
         boxShadow:
-          'inset 0 0 90px rgba(35,111,171,0.18), 0 22px 55px rgba(0,0,0,0.36)',
+          'inset 0 0 100px rgba(35,111,171,0.20), 0 24px 58px rgba(0,0,0,0.38)',
       }}
     >
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          opacity: 0.22,
-          backgroundImage:
-            'linear-gradient(rgba(92,165,217,0.13) 1px, transparent 1px), linear-gradient(90deg, rgba(92,165,217,0.13) 1px, transparent 1px)',
-          backgroundSize: '42px 42px',
-        }}
-      />
-      <svg viewBox="0 0 1080 715" style={{position: 'absolute', inset: 0, width: '100%', height: '100%'}}>
-        <path d={spherePath} fill="#071624" stroke="rgba(124,188,231,0.42)" strokeWidth={1.2} />
-        <path d={graticulePath} fill="none" stroke="rgba(128,183,220,0.15)" strokeWidth={0.65} />
-        <MapLayer snapshot={current} opacity={1 - transition} emphasizeChanges={false} pulse={pulse} />
-        <MapLayer snapshot={next} opacity={transition} emphasizeChanges={transition > 0.24} pulse={pulse} />
-        {focusEntity ? (
+      <svg
+        viewBox="0 0 1080 840"
+        style={{position: 'absolute', inset: 0, width: '100%', height: '100%'}}
+      >
+        <defs>
+          <filter id="organic-invasion" x="-12%" y="-12%" width="124%" height="124%">
+            <feTurbulence
+              type="fractalNoise"
+              baseFrequency="0.013 0.028"
+              numOctaves="2"
+              seed="19"
+              result="noise"
+            />
+            <feDisplacementMap
+              in="SourceGraphic"
+              in2="noise"
+              scale="17"
+              xChannelSelector="R"
+              yChannelSelector="G"
+            />
+          </filter>
+          {rendered
+            .filter((item) => item.state && item.path)
+            .map((item) => {
+              const coordinates = gradientCoordinates(item.numericCode, item.bounds);
+              return (
+                <g key={`defs-${item.numericCode}`}>
+                  <clipPath id={`clip-${item.numericCode}`}>
+                    <path d={item.path} />
+                  </clipPath>
+                  <linearGradient
+                    id={`share-${item.numericCode}`}
+                    gradientUnits="userSpaceOnUse"
+                    {...coordinates}
+                  >
+                    <ShareStops shares={item.state!.shares} />
+                  </linearGradient>
+                </g>
+              );
+            })}
+        </defs>
+
+        <path
+          d={spherePath}
+          fill="#061522"
+          stroke="rgba(124,188,231,0.42)"
+          strokeWidth={1.2}
+        />
+        <path
+          d={graticulePath}
+          fill="none"
+          stroke="rgba(128,183,220,0.16)"
+          strokeWidth={0.7}
+        />
+
+        {rendered.map((item) => {
+          if (!item.path) return null;
+          if (!item.state) {
+            return (
+              <path
+                key={`empty-${item.numericCode}-${item.index}`}
+                d={item.path}
+                fill={data.config.noDataColor}
+                fillOpacity={0.72}
+                stroke="rgba(183,204,226,0.34)"
+                strokeWidth={0.62}
+              />
+            );
+          }
+          const [[x0, y0], [x1, y1]] = item.bounds;
+          const changing = item.state.changingLeader && progress > 0.08 && progress < 0.94;
+          return (
+            <g key={`country-${item.numericCode}-${item.index}`}>
+              <g clipPath={`url(#clip-${item.numericCode})`}>
+                <rect
+                  x={x0 - 24}
+                  y={y0 - 24}
+                  width={Math.max(1, x1 - x0 + 48)}
+                  height={Math.max(1, y1 - y0 + 48)}
+                  fill={`url(#share-${item.numericCode})`}
+                  filter="url(#organic-invasion)"
+                />
+              </g>
+              <path
+                d={item.path}
+                fill="none"
+                stroke={changing ? '#FFFFFF' : 'rgba(214,228,243,0.56)'}
+                strokeWidth={changing ? 1.3 + pulse * 1.4 : 0.66}
+                strokeLinejoin="round"
+                style={{
+                  filter: changing
+                    ? `drop-shadow(0 0 ${6 + pulse * 10}px ${data.entities[item.state.leader].color})`
+                    : 'drop-shadow(0 1px 1px rgba(0,0,0,0.45))',
+                }}
+              />
+            </g>
+          );
+        })}
+
+        {focus ? (
           <g>
             <circle
               cx={focusPoint[0]}
               cy={focusPoint[1]}
-              r={8 + pulse * 5}
+              r={8 + pulse * 4}
               fill="#FFFFFF"
-              stroke={focusEntity.color}
+              stroke={focusColor}
               strokeWidth={5}
-              style={{filter: `drop-shadow(0 0 14px ${focusEntity.color})`}}
+              style={{filter: `drop-shadow(0 0 14px ${focusColor})`}}
             />
             <path
-              d={`M${focusPoint[0] + 10},${focusPoint[1] - 9} L${focusPoint[0] + 45},${focusPoint[1] - 38}`}
+              d={`M${focusPoint[0] + 8},${focusPoint[1] - 8} L${focusPoint[0] + 40},${focusPoint[1] - 40}`}
               stroke="#FFFFFF"
               strokeWidth={2}
             />
             <rect
-              x={focusPoint[0] + 42}
-              y={focusPoint[1] - 66}
-              width={124}
-              height={42}
+              x={focusPoint[0] + 35}
+              y={focusPoint[1] - 70}
+              width={118}
+              height={43}
               rx={14}
-              fill="rgba(3,10,18,0.88)"
-              stroke={focusEntity.color}
+              fill="rgba(2,9,17,0.92)"
+              stroke={focusColor}
             />
             <text
-              x={focusPoint[0] + 104}
-              y={focusPoint[1] - 38}
+              x={focusPoint[0] + 94}
+              y={focusPoint[1] - 41}
               fill="#FFFFFF"
               textAnchor="middle"
               fontSize={23}
@@ -211,86 +364,141 @@ const WorldMap = ({
           </g>
         ) : null}
       </svg>
+
       <div
         style={{
           position: 'absolute',
           left: 22,
           top: 18,
-          padding: '9px 14px',
+          padding: '10px 15px',
           borderRadius: 14,
-          background: 'rgba(2,8,15,0.70)',
-          color: '#9CB3C9',
+          background: 'rgba(2,8,15,0.80)',
+          color: '#D8E6F3',
           fontSize: 18,
-          fontWeight: 700,
+          fontWeight: 800,
         }}
       >
-        色＝その国で利用率1位
+        日本が中央の世界地図
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          right: 20,
+          top: 18,
+          padding: '10px 15px',
+          borderRadius: 14,
+          background: 'rgba(2,8,15,0.80)',
+          color: '#9FC4E2',
+          fontSize: 17,
+          fontWeight: 800,
+        }}
+      >
+        色の面積＝利用シェア
       </div>
     </div>
   );
 };
 
-const Ranking = ({snapshot, reveal}: {snapshot: YearSnapshot; reveal: number}) => {
-  const visible = snapshot.ranking
-    .filter((row) => row.count > 0)
-    .slice(0, data.config.rankingSize);
-  const maxCount = Math.max(1, visible[0]?.count ?? 1);
+type LiveRanking = RankingRow & {
+  currentRank: number;
+  nextRank: number;
+  position: number;
+};
+
+const Ranking = ({
+  current,
+  next,
+  progress,
+}: {
+  current: YearSnapshot;
+  next: YearSnapshot;
+  progress: number;
+}) => {
+  const currentRows = new Map(current.ranking.map((row) => [row.entity, row]));
+  const nextRows = new Map(next.ranking.map((row) => [row.entity, row]));
+  const rows: LiveRanking[] = entityOrder.map((entity) => {
+    const currentRow = currentRows.get(entity);
+    const nextRow = nextRows.get(entity);
+    const currentRank = currentRow?.rank ?? entityOrder.length;
+    const nextRank = nextRow?.rank ?? entityOrder.length;
+    return {
+      entity,
+      share: mix(currentRow?.share ?? 0, nextRow?.share ?? 0, progress),
+      delta: (nextRow?.share ?? 0) - (currentRow?.share ?? 0),
+      rank: Math.round(mix(currentRank, nextRank, progress)),
+      currentRank,
+      nextRank,
+      position: mix(currentRank - 1, nextRank - 1, progress),
+    };
+  });
+  const liveOrder = [...rows].sort((a, b) => b.share - a.share);
+  const liveRank = new Map(liveOrder.map((row, index) => [row.entity, index + 1]));
+  const maxShare = Math.max(1, ...rows.map((row) => row.share));
+  const rowHeight = 72;
+  const visibleHeight = data.config.rankingSize * rowHeight;
 
   return (
-    <div style={{display: 'flex', flexDirection: 'column', gap: 10}}>
-      {visible.map((row, index) => {
+    <div style={{position: 'relative', height: visibleHeight, overflow: 'hidden'}}>
+      {rows.map((row) => {
         const entity = data.entities[row.entity];
-        const delay = index * 0.055;
-        const itemReveal = interpolate(reveal, [delay, delay + 0.48], [0, 1], {
-          extrapolateLeft: 'clamp',
-          extrapolateRight: 'clamp',
-          easing: Easing.out(Easing.cubic),
-        });
+        const opacity = clamp(data.config.rankingSize + 0.5 - row.position);
         return (
           <div
             key={row.entity}
             style={{
-              position: 'relative',
-              height: 76,
-              borderRadius: 22,
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              height: 64,
+              transform: `translateY(${row.position * rowHeight}px)`,
+              opacity,
+              transition: 'none',
+              borderRadius: 19,
               overflow: 'hidden',
               display: 'grid',
-              gridTemplateColumns: '54px 54px 1fr 128px',
+              gridTemplateColumns: '48px 48px 1fr 150px',
               alignItems: 'center',
               gap: 12,
-              padding: '0 20px',
-              transform: `translateX(${(1 - itemReveal) * 42}px)`,
-              opacity: itemReveal,
-              background: row.rank === 1 ? 'rgba(255,255,255,0.125)' : 'rgba(255,255,255,0.055)',
-              border: row.rank === 1 ? `1.5px solid ${entity.color}BB` : '1px solid rgba(255,255,255,0.08)',
+              padding: '0 18px',
+              background:
+                liveRank.get(row.entity) === 1
+                  ? 'rgba(255,255,255,0.13)'
+                  : 'rgba(255,255,255,0.055)',
+              border:
+                liveRank.get(row.entity) === 1
+                  ? `1.5px solid ${entity.color}BB`
+                  : '1px solid rgba(255,255,255,0.08)',
             }}
           >
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
-                width: `${(row.count / maxCount) * 100 * itemReveal}%`,
-                background: `linear-gradient(90deg, ${entity.color}40, ${entity.color}08)`,
+                width: `${(row.share / maxShare) * 100}%`,
+                background: `linear-gradient(90deg, ${entity.color}46, ${entity.color}0A)`,
               }}
             />
-            <div style={{zIndex: 1, fontSize: 27, fontWeight: 950, color: row.rank === 1 ? '#FFFFFF' : '#AFC0D3'}}>
-              {row.rank}
+            <div style={{zIndex: 1, fontSize: 25, fontWeight: 900}}>
+              {liveRank.get(row.entity)}
             </div>
-            <div style={{zIndex: 1}}>{browserBadge(row.entity, 42)}</div>
-            <div style={{zIndex: 1, fontSize: 27, fontWeight: 900, whiteSpace: 'nowrap'}}>{entity.displayName}</div>
+            <div style={{zIndex: 1}}>{browserBadge(row.entity, 39)}</div>
+            <div style={{zIndex: 1, fontSize: 25, fontWeight: 900, whiteSpace: 'nowrap'}}>
+              {entity.displayName}
+            </div>
             <div style={{zIndex: 1, textAlign: 'right'}}>
-              <span style={{fontSize: 34, fontWeight: 950}}>{row.count}</span>
-              <span style={{fontSize: 18, marginLeft: 5, color: '#AFC0D3'}}>か国</span>
-              {data.config.showDelta && row.delta !== 0 ? (
+              <span style={{fontSize: 31, fontWeight: 900}}>{row.share.toFixed(1)}</span>
+              <span style={{fontSize: 17, marginLeft: 3, color: '#AFC0D3'}}>%</span>
+              {data.config.showDelta && Math.abs(row.delta) >= 0.05 ? (
                 <span
                   style={{
                     marginLeft: 7,
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: 900,
                     color: row.delta > 0 ? '#6BF0AF' : '#FF8597',
                   }}
                 >
-                  {row.delta > 0 ? '+' : ''}{row.delta}
+                  {row.delta > 0 ? '↗' : '↘'}
                 </span>
               ) : null}
             </div>
@@ -301,32 +509,73 @@ const Ranking = ({snapshot, reveal}: {snapshot: YearSnapshot; reveal: number}) =
   );
 };
 
-const FocusCard = ({snapshot}: {snapshot: YearSnapshot}) => {
-  const focus = countryFor(snapshot, data.config.focusCountryCode);
+const FocusCard = ({
+  current,
+  next,
+  progress,
+}: {
+  current: YearSnapshot;
+  next: YearSnapshot;
+  progress: number;
+}) => {
+  const focus = interpolateCountry(
+    countryFor(current, data.config.focusCountryCode),
+    countryFor(next, data.config.focusCountryCode),
+    progress,
+  );
   if (!focus) return null;
-  const entity = data.entities[focus.entity];
+  const topThree = focus.rankedShares.slice(0, 3);
   return (
     <div
       style={{
-        marginTop: 13,
-        height: 86,
-        borderRadius: 23,
-        display: 'grid',
-        gridTemplateColumns: '118px 54px 1fr auto',
-        alignItems: 'center',
-        gap: 13,
-        padding: '0 20px',
-        background: `linear-gradient(90deg, ${entity.color}30, rgba(255,255,255,0.055))`,
-        border: `1px solid ${entity.color}99`,
+        marginTop: 14,
+        minHeight: 146,
+        borderRadius: 24,
+        padding: '17px 20px 16px',
+        background: 'linear-gradient(135deg, rgba(28,66,97,0.72), rgba(255,255,255,0.045))',
+        border: '1px solid rgba(113,190,241,0.42)',
       }}
     >
-      <div style={{fontSize: 25, fontWeight: 950}}>🇯🇵 {data.config.focusCountryLabel ?? '日本'}</div>
-      {browserBadge(focus.entity, 43)}
-      <div>
-        <div style={{fontSize: 28, fontWeight: 950}}>{entity.displayName}</div>
-        <div style={{fontSize: 17, color: '#ABC0D5'}}>国内利用率1位</div>
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+        <div style={{fontSize: 25, fontWeight: 900}}>日本のブラウザ利用シェア</div>
+        <div style={{fontSize: 17, color: '#AFC7DB', fontWeight: 800}}>1色ではなく割合で表示</div>
       </div>
-      <div style={{fontSize: 35, fontWeight: 950, color: entity.color}}>{focus.value.toFixed(1)}%</div>
+      <div
+        style={{
+          marginTop: 12,
+          height: 24,
+          display: 'flex',
+          overflow: 'hidden',
+          borderRadius: 999,
+          background: '#172334',
+          border: '1px solid rgba(255,255,255,0.14)',
+        }}
+      >
+        {focus.shares.map((share) => (
+          <div
+            key={share.entity}
+            style={{
+              width: `${share.value}%`,
+              height: '100%',
+              background: data.entities[share.entity].color,
+              boxShadow: `0 0 10px ${data.entities[share.entity].color}66`,
+            }}
+          />
+        ))}
+      </div>
+      <div style={{marginTop: 12, display: 'flex', gap: 24, alignItems: 'center'}}>
+        {topThree.map((share) => (
+          <div key={share.entity} style={{display: 'flex', alignItems: 'center', gap: 9}}>
+            {browserBadge(share.entity, 34)}
+            <div>
+              <div style={{fontSize: 19, fontWeight: 900}}>{data.entities[share.entity].displayName}</div>
+              <div style={{fontSize: 19, color: data.entities[share.entity].color, fontWeight: 900}}>
+                {share.value.toFixed(1)}%
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -334,141 +583,137 @@ const FocusCard = ({snapshot}: {snapshot: YearSnapshot}) => {
 const EventBanner = ({snapshot, phase}: {snapshot: YearSnapshot; phase: number}) => {
   const event = data.config.showEvents ? snapshot.events[0] : undefined;
   if (!event) return null;
-  const show = interpolate(phase, [0, 0.12, 0.82, 1], [0, 1, 1, 0.2], {
+  const opacity = interpolate(phase, [0, 0.09, 0.78, 1], [0, 1, 1, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
-  const leader = snapshot.leader ? data.entities[snapshot.leader] : null;
   return (
     <div
       style={{
         position: 'absolute',
-        left: 28,
-        right: 28,
+        left: 24,
+        right: 24,
         bottom: 24,
-        minHeight: 96,
-        borderRadius: 24,
-        padding: '16px 22px',
+        minHeight: 91,
+        borderRadius: 22,
+        padding: '14px 20px',
         display: 'flex',
         alignItems: 'center',
-        gap: 18,
-        opacity: show,
-        transform: `translateY(${(1 - show) * 24}px)`,
-        background: 'linear-gradient(90deg, rgba(3,9,16,0.94), rgba(10,25,39,0.91))',
-        border: `1px solid ${leader?.color ?? '#FFCF66'}AA`,
-        boxShadow: `0 0 28px ${leader?.color ?? '#FFCF66'}33`,
+        gap: 15,
+        opacity,
+        transform: `translateY(${(1 - opacity) * 18}px)`,
+        background: 'linear-gradient(90deg, rgba(3,9,16,0.95), rgba(10,25,39,0.93))',
+        border: '1px solid rgba(255,204,102,0.52)',
       }}
     >
-      <div style={{fontSize: 35}}>⚡</div>
+      <div style={{fontSize: 32, color: '#FFD166'}}>◆</div>
       <div>
-        <div style={{fontSize: 28, fontWeight: 950}}>{event.title}</div>
-        <div style={{marginTop: 3, fontSize: 20, color: '#C4D1DF', fontWeight: 650}}>{event.description}</div>
+        <div style={{fontSize: 25, fontWeight: 900}}>{event.title}</div>
+        <div style={{marginTop: 3, fontSize: 19, color: '#C9D6E3', fontWeight: 650}}>
+          {event.description}
+        </div>
       </div>
     </div>
   );
 };
 
-const Progress = ({year}: {year: number}) => {
-  const ratio = (year - data.config.startYear) / Math.max(1, data.config.endYear - data.config.startYear);
-  return (
-    <div style={{marginTop: 15}}>
-      <div style={{height: 7, borderRadius: 999, background: 'rgba(255,255,255,0.10)', overflow: 'hidden'}}>
-        <div
-          style={{
-            height: '100%',
-            width: `${ratio * 100}%`,
-            borderRadius: 999,
-            background: 'linear-gradient(90deg, #39A9F5, #34A853, #FFB000)',
-            boxShadow: '0 0 14px rgba(81,199,255,0.65)',
-          }}
-        />
-      </div>
-      <div style={{marginTop: 7, display: 'flex', justifyContent: 'space-between', fontSize: 16, color: '#7F96AC', fontWeight: 800}}>
-        <span>{data.config.startYear}</span>
-        <span>{data.config.sourceLabel}</span>
-        <span>{data.config.endYear}</span>
-      </div>
+const Progress = ({ratio}: {ratio: number}) => (
+  <div style={{marginTop: 15}}>
+    <div style={{height: 7, borderRadius: 999, background: 'rgba(255,255,255,0.10)', overflow: 'hidden'}}>
+      <div
+        style={{
+          height: '100%',
+          width: `${clamp(ratio) * 100}%`,
+          borderRadius: 999,
+          background: 'linear-gradient(90deg, #39A9F5, #34A853, #FFB000)',
+          boxShadow: '0 0 14px rgba(81,199,255,0.65)',
+        }}
+      />
     </div>
-  );
-};
+    <div
+      style={{
+        marginTop: 7,
+        display: 'grid',
+        gridTemplateColumns: '90px 1fr 90px',
+        alignItems: 'center',
+        fontSize: 15,
+        color: '#8199AF',
+        fontWeight: 800,
+      }}
+    >
+      <span>{data.config.startYear}年</span>
+      <span style={{textAlign: 'center'}}>{data.config.sourceLabel}</span>
+      <span style={{textAlign: 'right'}}>{data.config.endYear}年</span>
+    </div>
+  </div>
+);
 
 const MainScene = ({
   current,
   next,
-  transition,
+  progress,
   phase,
+  index,
 }: {
   current: YearSnapshot;
   next: YearSnapshot;
-  transition: number;
+  progress: number;
   phase: number;
+  index: number;
 }) => {
-  const shown = transition >= 0.5 ? next : current;
-  const leader = shown.leader ? data.entities[shown.leader] : null;
-  const changedCount = Object.values(shown.gainedByEntity).reduce((sum, value) => sum + value, 0);
-  const rankingReveal = interpolate(phase, [0.02, 0.48], [0, 1], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  });
+  const month = Math.min(12, Math.floor(phase * 12) + 1);
+  const currentLeader = current.ranking[0]?.entity;
+  const nextLeader = next.ranking[0]?.entity;
+  const leader = progress < 0.5 ? currentLeader : nextLeader;
+  const leaderColor = leader ? data.entities[leader].color : '#AFC0D3';
+  const timelineRatio = (index + phase) / Math.max(1, data.years.length - 1);
 
   return (
     <AbsoluteFill
       style={{
         color: '#FFFFFF',
         fontFamily,
-        padding: '46px 48px 34px',
-        background: `radial-gradient(circle at 50% 28%, #102B43 0%, ${data.config.backgroundColor} 55%, #020408 100%)`,
+        padding: '42px 44px 34px',
+        background: `radial-gradient(circle at 50% 28%, #102B43 0%, ${data.config.backgroundColor} 58%, #020408 100%)`,
       }}
     >
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
-        <div>
-          <div style={{fontSize: 41, fontWeight: 950, letterSpacing: 0.5}}>{data.config.title}</div>
-          <div style={{marginTop: 5, fontSize: 21, color: '#AFC0D3', fontWeight: 750}}>
-            {data.config.subtitle}　<span style={{color: '#6FBDEB'}}>{data.config.metricLabel}</span>
+        <div style={{maxWidth: 700}}>
+          <div style={{fontSize: 40, fontWeight: 900, letterSpacing: 0.2}}>{data.config.title}</div>
+          <div style={{marginTop: 6, fontSize: 21, color: '#D3E2EF', fontWeight: 800}}>
+            {data.config.subtitle}
+          </div>
+          <div style={{marginTop: 5, fontSize: 17, color: '#75BDE8', fontWeight: 750}}>
+            {data.config.metricLabel}
           </div>
         </div>
-        <div style={{textAlign: 'right'}}>
-          <div style={{fontSize: 83, lineHeight: 0.92, fontWeight: 950, letterSpacing: -4}}>{shown.year}</div>
-          <div style={{marginTop: 8, fontSize: 18, color: changedCount ? '#FFD277' : '#7F96AC', fontWeight: 850}}>
-            {changedCount ? `${changedCount}か国で勢力交代` : '勢力図を集計中'}
+        <div style={{textAlign: 'right', minWidth: 250}}>
+          <div style={{fontSize: 68, lineHeight: 0.96, fontWeight: 900, letterSpacing: -3}}>
+            {current.year}年
+          </div>
+          <div style={{marginTop: 8, fontSize: 28, color: '#FFD277', fontWeight: 900}}>
+            {month}月
           </div>
         </div>
       </div>
 
-      <div style={{position: 'relative', marginTop: 22}}>
-        <WorldMap current={current} next={next} transition={transition} phase={phase} />
-        <EventBanner snapshot={shown} phase={phase} />
-        {shown.leaderChanged && leader ? (
-          <div
-            style={{
-              position: 'absolute',
-              top: 18,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              padding: '11px 25px',
-              borderRadius: 999,
-              background: leader.color,
-              color: '#041019',
-              fontSize: 24,
-              fontWeight: 950,
-              boxShadow: `0 0 30px ${leader.color}`,
-            }}
-          >
-            👑 世界首位交代　{leader.displayName}
-          </div>
-        ) : null}
+      <div style={{position: 'relative', marginTop: 18}}>
+        <WorldMap current={current} next={next} progress={progress} phase={phase} />
+        <EventBanner snapshot={current} phase={phase} />
       </div>
 
-      <div style={{marginTop: 18}}>
+      <div style={{marginTop: 17}}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10}}>
-          <div style={{fontSize: 22, fontWeight: 900, color: '#AFC0D3'}}>支配国数ランキング</div>
-          <div style={{fontSize: 18, color: leader?.color ?? '#AFC0D3', fontWeight: 900}}>
-            首位：{leader?.displayName ?? 'データなし'}
+          <div style={{fontSize: 22, fontWeight: 900, color: '#D1DFEB'}}>
+            主要48か国の平均利用シェア
+          </div>
+          <div style={{fontSize: 18, color: leaderColor, fontWeight: 900}}>
+            現在の首位：{leader ?? '集計中'}
           </div>
         </div>
-        <Ranking snapshot={shown} reveal={rankingReveal} />
-        <FocusCard snapshot={shown} />
-        <Progress year={shown.year} />
+        <Ranking current={current} next={next} progress={progress} />
+        <FocusCard current={current} next={next} progress={progress} />
+        <Progress ratio={timelineRatio} />
       </div>
     </AbsoluteFill>
   );
@@ -476,26 +721,28 @@ const MainScene = ({
 
 const Intro = ({frame, fps}: {frame: number; fps: number}) => {
   const entrance = spring({frame, fps, config: {damping: 15, stiffness: 105, mass: 0.8}});
-  const marks = ['Internet Explorer', 'Firefox', 'Chrome', 'Safari', 'Opera Mini', 'UC Browser'];
+  const marks = ['Internet Explorer', 'Firefox', 'Chrome', 'Safari', 'Edge'];
   return (
     <AbsoluteFill
       style={{
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 62,
+        padding: 66,
         color: '#FFFFFF',
         textAlign: 'center',
         fontFamily,
-        background: `radial-gradient(circle at center, #153E5E 0%, ${data.config.backgroundColor} 62%, #010307 100%)`,
+        background: `radial-gradient(circle at center, #153E5E 0%, ${data.config.backgroundColor} 63%, #010307 100%)`,
       }}
     >
-      <div style={{fontSize: 24, color: '#77CFFF', fontWeight: 950, letterSpacing: 5}}>BROWSER WARS</div>
+      <div style={{fontSize: 28, color: '#77CFFF', fontWeight: 900, letterSpacing: 3}}>
+        世界ブラウザ利用シェア
+      </div>
       <div
         style={{
-          marginTop: 28,
-          fontSize: 68,
-          lineHeight: 1.24,
-          fontWeight: 950,
+          marginTop: 25,
+          fontSize: 66,
+          lineHeight: 1.25,
+          fontWeight: 900,
           whiteSpace: 'pre-line',
           transform: `scale(${0.84 + entrance * 0.16})`,
           textShadow: '0 0 32px rgba(82,190,255,0.25)',
@@ -503,17 +750,32 @@ const Intro = ({frame, fps}: {frame: number; fps: number}) => {
       >
         {data.config.hookText ?? data.config.title}
       </div>
-      <div style={{marginTop: 44, display: 'flex', gap: 18, justifyContent: 'center'}}>
+      <div style={{marginTop: 39, display: 'flex', gap: 18, justifyContent: 'center'}}>
         {marks.map((mark, index) => {
           const item = spring({frame: frame - index * 3, fps, config: {damping: 14, stiffness: 130}});
-          return <div key={mark} style={{transform: `translateY(${(1 - item) * 40}px) scale(${item})`, opacity: item}}>{browserBadge(mark, 76)}</div>;
+          return (
+            <div key={mark} style={{transform: `translateY(${(1 - item) * 36}px) scale(${item})`, opacity: item}}>
+              {browserBadge(mark, 74)}
+            </div>
+          );
         })}
       </div>
-      <div style={{marginTop: 48, fontSize: 37, fontWeight: 900}}>
-        {data.config.startYear} <span style={{color: '#6ABDEB'}}>→</span> {data.config.endYear}
+      <div
+        style={{
+          marginTop: 44,
+          padding: '22px 30px',
+          borderRadius: 24,
+          background: 'rgba(255,255,255,0.07)',
+          border: '1px solid rgba(255,255,255,0.16)',
+        }}
+      >
+        <div style={{fontSize: 29, fontWeight: 900}}>国の中を複数の色で表示</div>
+        <div style={{marginTop: 9, fontSize: 23, color: '#BED0E0', fontWeight: 750}}>
+          色の境界がじわじわ動き、利用シェアの変化を表します
+        </div>
       </div>
-      <div style={{marginTop: 18, fontSize: 24, color: '#AFC0D3', fontWeight: 750}}>
-        世界の色が、わずか数年で塗り替わる
+      <div style={{marginTop: 38, fontSize: 34, fontWeight: 900}}>
+        {data.config.startYear}年 <span style={{color: '#6ABDEB'}}>→</span> {data.config.endYear}年
       </div>
     </AbsoluteFill>
   );
@@ -533,18 +795,19 @@ const SummaryCard = ({
     <div
       style={{
         flex: 1,
-        padding: '21px 20px',
-        borderRadius: 24,
+        padding: '20px 18px',
+        borderRadius: 23,
         background: `linear-gradient(145deg, ${config.color}28, rgba(255,255,255,0.05))`,
         border: `1px solid ${config.color}88`,
       }}
     >
-      <div style={{display: 'flex', alignItems: 'center', gap: 12}}>
-        {browserBadge(entity, 45)}
-        <div style={{fontSize: 24, fontWeight: 950}}>{config.displayName}</div>
+      <div style={{display: 'flex', alignItems: 'center', gap: 11}}>
+        {browserBadge(entity, 43)}
+        <div style={{fontSize: 23, fontWeight: 900}}>{config.displayName}</div>
       </div>
-      <div style={{marginTop: 16, fontSize: 28, fontWeight: 950}}>
-        {before}か国 <span style={{color: '#8298AD'}}>→</span> <span style={{color: config.color}}>{after}か国</span>
+      <div style={{marginTop: 15, fontSize: 27, fontWeight: 900}}>
+        {before.toFixed(1)}% <span style={{color: '#8298AD'}}>→</span>{' '}
+        <span style={{color: config.color}}>{after.toFixed(1)}%</span>
       </div>
     </div>
   );
@@ -555,55 +818,59 @@ const Outro = ({frame, startFrame, fps}: {frame: number; startFrame: number; fps
   const reveal = spring({frame: local, fps, config: {damping: 17, stiffness: 105}});
   const first = data.years[0];
   const last = data.years[data.years.length - 1];
-  const focus = countryFor(last, data.config.focusCountryCode);
   return (
     <AbsoluteFill
       style={{
         color: '#FFFFFF',
         fontFamily,
-        padding: '50px 50px 38px',
+        padding: '44px 46px 34px',
         background: `radial-gradient(circle at 50% 30%, #12314B, ${data.config.backgroundColor} 62%, #010307)`,
       }}
     >
-      <div style={{textAlign: 'center', transform: `translateY(${(1 - reveal) * 28}px)`, opacity: reveal}}>
-        <div style={{fontSize: 25, color: '#76CDFF', fontWeight: 950, letterSpacing: 3}}>FINAL RESULT</div>
-        <div style={{marginTop: 9, fontSize: 54, fontWeight: 950}}>16年で世界はこう変わった</div>
+      <div style={{textAlign: 'center', transform: `translateY(${(1 - reveal) * 26}px)`, opacity: reveal}}>
+        <div style={{fontSize: 25, color: '#76CDFF', fontWeight: 900}}>最終結果</div>
+        <div style={{marginTop: 8, fontSize: 51, fontWeight: 900}}>16年間で世界はこう変わった</div>
       </div>
-      <div style={{marginTop: 26}}>
-        <WorldMap current={last} next={last} transition={0} phase={0.7} />
+      <div style={{marginTop: 22}}>
+        <WorldMap current={last} next={last} progress={0} phase={0.7} />
       </div>
-      <div style={{marginTop: 20, display: 'flex', gap: 14}}>
-        <SummaryCard entity="Internet Explorer" before={rankingFor(first, 'Internet Explorer')} after={rankingFor(last, 'Internet Explorer')} />
-        <SummaryCard entity="Chrome" before={rankingFor(first, 'Chrome')} after={rankingFor(last, 'Chrome')} />
+      <div style={{marginTop: 18, display: 'flex', gap: 14}}>
+        <SummaryCard
+          entity="Internet Explorer"
+          before={rankingShare(first, 'Internet Explorer')}
+          after={rankingShare(last, 'Internet Explorer')}
+        />
+        <SummaryCard
+          entity="Chrome"
+          before={rankingShare(first, 'Chrome')}
+          after={rankingShare(last, 'Chrome')}
+        />
       </div>
-      {focus ? (
-        <div style={{marginTop: 16, textAlign: 'center', fontSize: 28, fontWeight: 900}}>
-          🇯🇵 日本の最終首位は <span style={{color: data.entities[focus.entity].color}}>{focus.entity}</span>
+      <div style={{marginTop: 24, textAlign: 'center'}}>
+        <div style={{fontSize: 30, fontWeight: 900}}>{data.config.endingQuestion}</div>
+        <div style={{marginTop: 16, display: 'flex', justifyContent: 'center', gap: 18}}>
+          {[data.config.endingOptionA, data.config.endingOptionB]
+            .filter(Boolean)
+            .map((option) => (
+              <div
+                key={option}
+                style={{
+                  minWidth: 245,
+                  padding: '14px 24px',
+                  borderRadius: 999,
+                  background: 'rgba(255,255,255,0.09)',
+                  border: '1px solid rgba(255,255,255,0.20)',
+                  fontSize: 23,
+                  fontWeight: 900,
+                }}
+              >
+                {option}
+              </div>
+            ))}
         </div>
-      ) : null}
-      <div style={{marginTop: 28, textAlign: 'center'}}>
-        <div style={{fontSize: 31, fontWeight: 950}}>{data.config.endingQuestion}</div>
-        <div style={{marginTop: 18, display: 'flex', justifyContent: 'center', gap: 18}}>
-          {[data.config.endingOptionA, data.config.endingOptionB].filter(Boolean).map((option) => (
-            <div
-              key={option}
-              style={{
-                minWidth: 230,
-                padding: '15px 26px',
-                borderRadius: 999,
-                background: 'rgba(255,255,255,0.09)',
-                border: '1px solid rgba(255,255,255,0.20)',
-                fontSize: 24,
-                fontWeight: 900,
-              }}
-            >
-              {option}
-            </div>
-          ))}
-        </div>
       </div>
-      <div style={{position: 'absolute', bottom: 22, left: 40, right: 40, textAlign: 'center', fontSize: 15, color: '#71879C'}}>
-        {data.config.sourceLabel}｜市場シェアはアクセス数ベースの推計で、人口比ではありません
+      <div style={{position: 'absolute', bottom: 20, left: 38, right: 38, textAlign: 'center', fontSize: 14, color: '#71879C'}}>
+        {data.config.sourceLabel}｜年次代表値の間は月単位で補間しています
       </div>
     </AbsoluteFill>
   );
@@ -615,7 +882,8 @@ export const GeoBaseVideo = () => {
   const {config, years} = data;
   const introFrames = Math.round(config.introSeconds * fps);
   const yearFrames = Math.max(1, Math.round(config.secondsPerYear * fps));
-  const mainFrames = years.length * yearFrames;
+  const intervalCount = Math.max(1, years.length - 1);
+  const mainFrames = intervalCount * yearFrames;
   const mainStart = introFrames;
   const outroStart = mainStart + mainFrames;
 
@@ -623,16 +891,19 @@ export const GeoBaseVideo = () => {
   if (frame >= outroStart) return <Outro frame={frame} startFrame={outroStart} fps={fps} />;
 
   const relativeFrame = Math.max(0, frame - mainStart);
-  const index = Math.min(years.length - 1, Math.floor(relativeFrame / yearFrames));
+  const index = Math.min(intervalCount - 1, Math.floor(relativeFrame / yearFrames));
+  const phase = (relativeFrame % yearFrames) / yearFrames;
+  const progress = Easing.inOut(Easing.cubic)(phase);
   const current = years[index];
   const next = years[Math.min(years.length - 1, index + 1)];
-  const phase = (relativeFrame % yearFrames) / yearFrames;
-  const transitionStart = Math.max(0, 1 - config.transitionRatio);
-  const transition = interpolate(phase, [transitionStart, 1], [0, 1], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-    easing: Easing.inOut(Easing.cubic),
-  });
 
-  return <MainScene current={current} next={next} transition={transition} phase={phase} />;
+  return (
+    <MainScene
+      current={current}
+      next={next}
+      progress={progress}
+      phase={phase}
+      index={index}
+    />
+  );
 };
