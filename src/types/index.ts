@@ -6,12 +6,18 @@ export type EntityConfig = {
 
 export type VideoConfig = {
   title: string;
+  categoryTitle?: string;
   subtitle: string;
   hookText?: string;
+  shareExplanation?: string;
   metricLabel?: string;
+  rankingLabel?: string;
   sourceLabel?: string;
   focusCountryCode?: string;
   focusCountryLabel?: string;
+  focusPanelTitle?: string;
+  introEntities?: string[];
+  summaryEntities?: string[];
   endingLessonTitle?: string;
   endingLessons?: string[];
   discussionPrompt?: string;
@@ -23,6 +29,7 @@ export type VideoConfig = {
   endYear: number;
   startPeriod?: string;
   endPeriod?: string;
+  secondsPerPeriod?: number;
   secondsPerYear: number;
   introSeconds: number;
   outroSeconds: number;
@@ -61,13 +68,18 @@ export type RankingRow = {
 };
 
 export type EventItem = {
+  period?: string;
   year: number;
+  month?: number;
   title: string;
   description: string;
 };
 
 export type YearSnapshot = {
+  period?: string;
+  periodLabel?: string;
   year: number;
+  month?: number;
   countries: CountryWinner[];
   ranking: RankingRow[];
   leader: string | null;
