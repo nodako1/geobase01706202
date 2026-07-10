@@ -31,7 +31,7 @@
   ],
   "discussionPrompt": "戦争の流れを最も変えた転換点は何だと思いますか？\n理由もコメントで教えてください",
   "mapCenterLongitude": 150,
-  "insetLeft": 560,
+  "insetLeft": 610,
   "insetTop": 390,
   "eventHoldSeconds": 3.2,
   "startPeriod": "1939-09",
