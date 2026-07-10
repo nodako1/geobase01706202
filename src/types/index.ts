@@ -15,6 +15,7 @@ export type VideoConfig = {
   endingQuestion?: string;
   endingOptionA?: string;
   endingOptionB?: string;
+  mapCenterLongitude?: number;
   startYear: number;
   endYear: number;
   secondsPerYear: number;
@@ -31,19 +32,25 @@ export type VideoConfig = {
   showDelta: boolean;
 };
 
+export type BrowserShare = {
+  entity: string;
+  value: number;
+};
+
 export type CountryWinner = {
   countryCode: string;
   countryName: string;
   numericCode: string;
   entity: string;
   value: number;
+  shares: BrowserShare[];
   previousEntity: string | null;
   changed: boolean;
 };
 
 export type RankingRow = {
   entity: string;
-  count: number;
+  share: number;
   delta: number;
   rank: number;
 };
@@ -61,8 +68,7 @@ export type YearSnapshot = {
   leader: string | null;
   previousLeader: string | null;
   leaderChanged: boolean;
-  gainedByEntity: Record<string, number>;
-  lostByEntity: Record<string, number>;
+  changedCountries: number;
   events: EventItem[];
 };
 
