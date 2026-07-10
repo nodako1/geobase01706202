@@ -14,86 +14,142 @@ const countries = [
   ['ZAF','South Africa','710'],['NGA','Nigeria','566'],['KEN','Kenya','404'],['GHA','Ghana','288'],['EGY','Egypt','818']
 ];
 
-const entities = [
-  'Internet Explorer',
-  'Firefox',
-  'Chrome',
-  'Safari',
-  'Opera Mini',
-  'UC Browser',
-  'Edge'
-];
+const entities = ['ChatGPT','Google Gemini','Perplexity','Claude','Microsoft Copilot','DeepSeek'];
+const periods = [];
+for (let year = 2024, month = 1; year < 2026 || (year === 2026 && month <= 6);) {
+  periods.push(`${year}-${String(month).padStart(2, '0')}`);
+  month += 1;
+  if (month === 13) { year += 1; month = 1; }
+}
 
-const firefoxStrong = new Set(['DEU','AUT','POL','CZE','SVK','HUN','FIN','ROU','FRA']);
-const safariStrong = new Set(['USA','CAN','GBR','IRL','AUS','NZL','JPN']);
+// 2026-06 values are anchored to StatCounter Global Stats public values.
+// The intervening monthly country series is reconstructed for video production and is not raw StatCounter CSV.
+const finalTargets = {
+  JPN: {'ChatGPT':67.71,'Google Gemini':14.20,'Microsoft Copilot':11.05,'Claude':4.10,'Perplexity':2.93,'DeepSeek':0.01},
+  USA: {'ChatGPT':66.13,'Microsoft Copilot':11.38,'Google Gemini':10.46,'Claude':6.99,'Perplexity':4.87,'DeepSeek':0.15},
+  CHN: {'ChatGPT':70.35,'Google Gemini':18.16,'DeepSeek':5.63,'Perplexity':2.15,'Microsoft Copilot':2.08,'Claude':1.63},
+  IND: {'ChatGPT':78.00,'Google Gemini':9.65,'Perplexity':5.07,'Claude':4.07,'Microsoft Copilot':3.19,'DeepSeek':0.02},
+  KOR: {'ChatGPT':66.50,'Google Gemini':17.25,'Perplexity':6.12,'Claude':5.79,'Microsoft Copilot':4.34,'DeepSeek':0.00}
+};
+
+const englishMarkets = new Set(['USA','CAN','GBR','IRL','AUS','NZL']);
+const europe = new Set(['FRA','DEU','ESP','PRT','ITA','NLD','BEL','CHE','AUT','POL','CZE','SVK','HUN','SWE','NOR','FIN','DNK','ROU','UKR']);
+const asia = new Set(['JPN','KOR','CHN','IND','PAK','BGD','IDN','THA','VNM','PHL']);
 const latinAmerica = new Set(['MEX','BRA','ARG','CHL','COL','PER']);
-const operaMiniMarkets = new Set(['NGA','KEN','GHA','ZAF','EGY']);
-const ucMarkets = new Set(['IND','PAK','BGD','IDN','THA','VNM','PHL','CHN']);
-const edgeMarkets = new Set(['USA','CAN','GBR','DEU','FRA','AUS','JPN']);
+const africa = new Set(['ZAF','NGA','KEN','GHA','EGY']);
 
-const bell = (value, center, width) => Math.exp(-Math.pow((value - center) / width, 2));
-
-const globalCurve = (year) => {
-  const t = year - 2009;
-  return {
-    'Internet Explorer': 55 * Math.exp(-0.37 * t) + 0.15,
-    Firefox: Math.max(3.8, 29 - t * 1.55),
-    Chrome: 4 + 69 / (1 + Math.exp(-0.67 * (t - 3.1))),
-    Safari: 3.8 + 14 / (1 + Math.exp(-0.34 * (t - 7.2))),
-    'Opera Mini': 0.8 + 3.8 * bell(t, 4.2, 3.2),
-    'UC Browser': 0.35 + 3.4 * bell(t, 6.2, 2.8),
-    Edge: t < 6 ? 0.05 : 0.5 + 6.6 * (1 - Math.exp(-0.25 * (t - 6)))
-  };
+const normalize = (values) => {
+  const total = entities.reduce((sum, entity) => sum + Math.max(0, values[entity] ?? 0), 0) || 1;
+  return Object.fromEntries(entities.map((entity) => [entity, Math.max(0, values[entity] ?? 0) / total * 100]));
 };
 
-const deterministicWobble = (year, code, entity) => {
-  const seed = [...`${code}:${entity}`].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  return 1 + Math.sin(year * 0.73 + seed * 0.11) * 0.055;
+const globalStart = normalize({
+  'ChatGPT': 88,
+  'Google Gemini': 4,
+  'Perplexity': 2,
+  'Claude': 2,
+  'Microsoft Copilot': 4,
+  'DeepSeek': 0
+});
+const globalEnd = normalize({
+  'ChatGPT': 76.87,
+  'Google Gemini': 7.94,
+  'Perplexity': 7.91,
+  'Claude': 3.74,
+  'Microsoft Copilot': 3.49,
+  'DeepSeek': 0.03
+});
+
+const regionalFinal = (code) => {
+  if (finalTargets[code]) return normalize(finalTargets[code]);
+  const raw = {...globalEnd};
+  if (englishMarkets.has(code)) {
+    raw['ChatGPT'] *= 0.90;
+    raw['Claude'] *= 1.65;
+    raw['Microsoft Copilot'] *= 1.55;
+    raw['Perplexity'] *= 1.12;
+  }
+  if (europe.has(code)) {
+    raw['ChatGPT'] *= 0.94;
+    raw['Perplexity'] *= 1.35;
+    raw['Microsoft Copilot'] *= 1.25;
+    raw['Claude'] *= 1.15;
+  }
+  if (asia.has(code)) {
+    raw['Google Gemini'] *= 1.42;
+    raw['Perplexity'] *= 0.88;
+  }
+  if (latinAmerica.has(code)) {
+    raw['ChatGPT'] *= 1.11;
+    raw['Google Gemini'] *= 1.08;
+    raw['Claude'] *= 0.65;
+  }
+  if (africa.has(code)) {
+    raw['ChatGPT'] *= 1.13;
+    raw['Google Gemini'] *= 1.12;
+    raw['Claude'] *= 0.58;
+    raw['Microsoft Copilot'] *= 0.72;
+  }
+  if (code === 'RUS') {
+    raw['ChatGPT'] *= 0.82;
+    raw['DeepSeek'] = 5.8;
+    raw['Google Gemini'] *= 1.2;
+  }
+  if (code === 'TUR') raw['Perplexity'] *= 1.42;
+  return normalize(raw);
 };
 
-const countryShares = (year, code) => {
-  const t = year - 2009;
-  const raw = globalCurve(year);
-
-  if (firefoxStrong.has(code)) raw.Firefox *= 1.15 + 0.45 * Math.exp(-0.17 * t);
-  if (safariStrong.has(code)) raw.Safari *= 1.45;
-  if (latinAmerica.has(code)) raw.Chrome *= 1.18;
-  if (operaMiniMarkets.has(code)) raw['Opera Mini'] *= 1 + 5.4 * bell(t, 4.8, 3.1);
-  if (ucMarkets.has(code)) raw['UC Browser'] *= 1 + 5.2 * bell(t, 6.3, 2.7);
-  if (edgeMarkets.has(code) && year >= 2020) raw.Edge *= 1.35;
-
-  if (code === 'JPN') {
-    raw['Internet Explorer'] *= year <= 2013 ? 1.48 : 0.9;
-    raw.Chrome *= year >= 2017 ? 0.72 : 0.9;
-    raw.Safari *= year >= 2017 ? 3.9 : 1.55;
-  }
-  if (code === 'KOR' && year <= 2013) raw['Internet Explorer'] *= 1.5;
-  if (code === 'CHN') {
-    raw['Internet Explorer'] *= year <= 2012 ? 1.35 : 0.8;
-    raw['UC Browser'] *= 1 + 3.2 * bell(t, 6.1, 2.5);
-    raw.Safari *= 0.55;
-  }
-  if (code === 'RUS' || code === 'UKR') {
-    raw.Firefox *= year <= 2012 ? 1.22 : 1;
-    raw['Opera Mini'] *= 1 + 1.5 * bell(t, 3.5, 2.8);
-  }
-
-  for (const entity of entities) raw[entity] *= deterministicWobble(year, code, entity);
-  const total = entities.reduce((sum, entity) => sum + Math.max(0, raw[entity]), 0);
-  return Object.fromEntries(entities.map((entity) => [entity, (Math.max(0, raw[entity]) / total) * 100]));
+const countryStart = (code) => {
+  const raw = {...globalStart};
+  if (englishMarkets.has(code)) raw['Claude'] *= 1.25;
+  if (asia.has(code)) raw['Google Gemini'] *= 1.18;
+  if (code === 'JPN') raw['Microsoft Copilot'] *= 1.55;
+  return normalize(raw);
 };
 
-const lines = ['year,country_code,country_name,numeric_code,entity,value'];
-for (let year = 2009; year <= 2025; year++) {
+const bell = (t, center, width) => Math.exp(-Math.pow((t - center) / width, 2));
+const ease = (t) => t * t * (3 - 2 * t);
+const seedFor = (code, entity) => [...`${code}:${entity}`].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+
+const countryShares = (periodIndex, code) => {
+  const lastIndex = periods.length - 1;
+  const t = periodIndex / lastIndex;
+  const start = countryStart(code);
+  const target = regionalFinal(code);
+  if (periodIndex === lastIndex) return target;
+
+  const raw = {};
+  for (const entity of entities) {
+    raw[entity] = start[entity] + (target[entity] - start[entity]) * ease(t);
+  }
+
+  const deepSeekStrength = code === 'CHN' ? 13 : (asia.has(code) || code === 'RUS' ? 7.2 : 4.4);
+  raw['DeepSeek'] += deepSeekStrength * bell(t, 0.46, 0.085);
+  raw['ChatGPT'] -= deepSeekStrength * 0.72 * bell(t, 0.46, 0.10);
+  raw['Google Gemini'] += (asia.has(code) ? 2.4 : 1.25) * bell(t, 0.70, 0.23);
+  raw['Perplexity'] += (europe.has(code) ? 1.8 : 1.0) * bell(t, 0.73, 0.20);
+  raw['Claude'] += (englishMarkets.has(code) ? 2.2 : 0.75) * bell(t, 0.62, 0.22);
+  raw['Microsoft Copilot'] += (code === 'JPN' || englishMarkets.has(code) ? 2.0 : 0.8) * bell(t, 0.55, 0.24);
+
+  const endpointSafeWave = Math.sin(Math.PI * t);
+  for (const entity of entities) {
+    const seed = seedFor(code, entity);
+    raw[entity] *= 1 + Math.sin(periodIndex * 0.52 + seed * 0.07) * 0.025 * endpointSafeWave;
+  }
+  return normalize(raw);
+};
+
+const lines = ['period,country_code,country_name,numeric_code,entity,value'];
+periods.forEach((period, periodIndex) => {
   countries.forEach(([code, name, numeric]) => {
-    const shares = countryShares(year, code);
+    const shares = countryShares(periodIndex, code);
     entities.forEach((entity) => {
-      lines.push([year, code, name, numeric, entity, shares[entity].toFixed(3)].join(','));
+      lines.push([period, code, name, numeric, entity, shares[entity].toFixed(3)].join(','));
     });
   });
-}
+});
 
 const outputDir = path.join(process.cwd(), 'public', 'data');
 fs.mkdirSync(outputDir, {recursive: true});
 fs.writeFileSync(path.join(outputDir, 'sample.csv'), lines.join('\n') + '\n');
-console.log(`Generated ${lines.length - 1} proportional browser-share rows for ${countries.length} countries.`);
+console.log(`Generated ${lines.length - 1} monthly generative-AI rows for ${countries.length} countries and ${periods.length} periods.`);
