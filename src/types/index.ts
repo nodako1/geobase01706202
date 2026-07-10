@@ -12,12 +12,17 @@ export type VideoConfig = {
   sourceLabel?: string;
   focusCountryCode?: string;
   focusCountryLabel?: string;
+  endingLessonTitle?: string;
+  endingLessons?: string[];
+  discussionPrompt?: string;
   endingQuestion?: string;
   endingOptionA?: string;
   endingOptionB?: string;
   mapCenterLongitude?: number;
   startYear: number;
   endYear: number;
+  startPeriod?: string;
+  endPeriod?: string;
   secondsPerYear: number;
   introSeconds: number;
   outroSeconds: number;
