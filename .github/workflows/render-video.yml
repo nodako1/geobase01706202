@@ -2,17 +2,20 @@ name: Render Geo Base Video
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 concurrency:
-  group: geobase-render-${{ github.ref }}
-  cancel-in-progress: false
+  group: geobase-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  render:
-    name: Render MP4
+  validate-and-render:
+    name: Validate and render
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -24,32 +27,38 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Install Remotion browser
-        run: npx remotion browser ensure
-
       - name: Validate data and source code
         run: npm run check
 
+      - name: Install Remotion browser
+        if: github.event_name == 'workflow_dispatch'
+        run: npx remotion browser ensure
+
       - name: Render video
+        if: github.event_name == 'workflow_dispatch'
         run: npm run render -- --concurrency=2
 
       - name: Verify output
+        if: github.event_name == 'workflow_dispatch'
         run: test -s out/geobase.mp4
 
       - name: Upload rendered video
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: geobase-video-${{ github.run_number }}
+          name: geobase-browser-wars-${{ github.run_number }}
           path: out/geobase.mp4
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
 
       - name: Add download instructions
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          echo "## Geo Base video generated" >> "$GITHUB_STEP_SUMMARY"
-          echo "Open the **Artifacts** section of this workflow run and download **geobase-video-${{ github.run_number }}**." >> "$GITHUB_STEP_SUMMARY"
+          echo "## Geo Base browser wars video generated" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download **geobase-browser-wars-${{ github.run_number }}** from the Artifacts section." >> "$GITHUB_STEP_SUMMARY"
