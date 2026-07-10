@@ -8,4 +8,5 @@ if (fs.existsSync(samplePath)) {
 } else {
   console.warn('public/data/sample.csv was not found. Generating the bundled sample dataset.');
   await import('./generate-sample.mjs');
+  await import('./postprocess-ww2-sample.mjs');
 }
