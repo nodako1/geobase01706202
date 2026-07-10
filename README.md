@@ -15,6 +15,19 @@ Geo Baseは、国別・年代別のCSVデータから、世界地図上の勢力
 - 1080×1920 / H.264 MP4を生成
 - タイトル・色・速度・FPS等を外部設定化
 
+## GitHub Actionsで動画を生成する
+
+ローカル環境を用意しなくても、GitHub ActionsからMP4を生成してダウンロードできます。
+
+1. GitHubリポジトリ上部の`Actions`を開く
+2. 左側から`Render Geo Base Video`を選択する
+3. `Run workflow`を押す
+4. 実行が完了したら対象のWorkflow Runを開く
+5. 画面下部の`Artifacts`から`geobase-video-実行番号`をダウンロードする
+6. ダウンロードしたZIPを展開し、`geobase.mp4`を取り出す
+
+Artifactの保存期間は14日です。ワークフローは手動実行時のみ起動します。
+
 ## セットアップ
 
 ```bash
@@ -63,6 +76,7 @@ year,country_code,country_name,entity,value
 ## ディレクトリ構成
 
 ```text
+.github/workflows/         GitHub Actionsワークフロー
 public/data/              入力CSV・設定
 scripts/prepare-data.mjs  検証・勝者判定・ランキング集計
 src/generated/            生成済み動画データ
