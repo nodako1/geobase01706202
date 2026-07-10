@@ -4,7 +4,9 @@
   "private": true,
   "description": "時系列データから世界勢力図動画を生成するRemotionベースのエンジン",
   "scripts": {
-    "prepare:data": "node scripts/prepare-data.mjs",
+    "ensure:data": "node scripts/ensure-data.mjs",
+    "generate:sample": "node scripts/generate-sample.mjs",
+    "prepare:data": "npm run ensure:data && node scripts/prepare-data.mjs",
     "studio": "npm run prepare:data && remotion studio src/index.ts",
     "render": "npm run prepare:data && remotion render src/index.ts GeoBase out/geobase.mp4 --codec=h264",
     "render:still": "npm run prepare:data && remotion still src/index.ts GeoBase out/geobase-final.png --frame=350",
